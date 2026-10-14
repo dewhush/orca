@@ -52,6 +52,7 @@ import {
   ANTIGRAVITY_ACP_ENV,
   scrubAntigravityAcpEnvironment
 } from '../antigravity/antigravity-acp-environment'
+import { AcpLaunchGate } from './acp-launch-gate'
 
 /** How an agent lists its models without a session: from its `initialize` answer (plus extension
  *  requests), from a listing command, or not at all. Never `authenticate` or `session/new`. */
@@ -133,6 +134,8 @@ export type AcpLaunchSpec = {
   privateTempDirectory?: true
   /** Reopens a chat's session with `session/resume` even when the agent can also load it. */
   resumePreference?: 'resume'
+  /** Holds this host's chat starts off while its sign-in or runtime is replaced or removed. */
+  launchGate?: AcpLaunchGate
 }
 
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
@@ -279,7 +282,10 @@ const ANTIGRAVITY_LAUNCH_SPEC: AcpLaunchSpec = {
   sessionHistory: ANTIGRAVITY_SESSION_HISTORY,
   privateTempDirectory: true,
   // `session/load` replays the whole conversation, which the chat already holds.
-  resumePreference: 'resume'
+  resumePreference: 'resume',
+  launchGate: new AcpLaunchGate(
+    "Antigravity's setup is changing on this host. Try again after it finishes."
+  )
 }
 
 export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
