@@ -113,10 +113,16 @@ function settledView(
       install
     )
   }
-  // The chat card's heading already says it is not installed.
-  const idle = settings
-    ? translate('components.managed-runtime.notInstalled', 'Not installed.')
-    : null
+  // The chat card's heading already says it is not installed; the size says what Install costs.
+  const size = state.downloadBytes
+  const idle =
+    size !== undefined
+      ? translate('components.managed-runtime.downloadSize', '{{size}} MB download.', {
+          size: Math.ceil(size / 1_000_000)
+        })
+      : settings
+        ? translate('components.managed-runtime.notInstalled', 'Not installed.')
+        : null
   const retry = translate('components.managed-runtime.retry', 'Retry installation')
   if (operation?.kind === 'install' && operation.phase === 'cancelled') {
     return view(translate('components.managed-runtime.cancelled', 'Installation cancelled.'), retry)
