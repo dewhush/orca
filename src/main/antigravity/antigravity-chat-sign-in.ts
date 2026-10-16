@@ -24,6 +24,8 @@ import { acpPrivateTempConnect } from '../acp/acp-private-temp'
 import type { ConnectAcpAgent } from '../acp/acp-structured-connection'
 import { resolveAcpLaunchInvocation } from '../acp/acp-structured-launch-resolution'
 import { prepareAcpLaunch } from '../acp/acp-structured-launch-preparation'
+import { AcpAgentError } from '../acp/acp-errors'
+import { isAgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { RevisionedState } from '../runtime/revisioned-state'
 import type { structuredAgentHostLaunchSources } from '../runtime/structured-agent-launch-support'
 import {
@@ -31,9 +33,8 @@ import {
   closeAntigravitySignInOwner
 } from './antigravity-chat-account'
 
-// The server's own wait for the browser; a status poll stays under a client's 30 s.
+// The server's own wait for the browser.
 const FLOW_DEADLINE_MS = 300_000
-const STATUS_WAIT_MS = 25_000
 const INVALID_LINK = {
   phase: 'failed',
   error: 'Antigravity returned an invalid Google sign-in link.'
@@ -90,12 +91,19 @@ export function startAntigravityChatSignIn(host: AntigravityChatSignInHost): { f
 
 async function runFlow(current: Flow, host: AntigravityChatSignInHost): Promise<void> {
   const deadline = setTimeout(() => publish(current, { phase: 'expired' }), FLOW_DEADLINE_MS)
+  let signingIn = false
   try {
     current.ended.signal.throwIfAborted()
-    await ANTIGRAVITY_LAUNCH_SPEC.launchGate.run(host.stopLiveChats, () => signIn(current, host))
+    await ANTIGRAVITY_LAUNCH_SPEC.launchGate.run(host.stopLiveChats, () => {
+      signingIn = true
+      return signIn(current, host)
+    })
     publish(current, { phase: 'signedIn' })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[antigravity] chat sign-in failed:', error)
+    // Before the sign-in runs, a refusal is the gate's or the chat stop's own sentence.
+    const message =
+      signingIn || !(error instanceof Error) ? antigravitySignInFailure(error) : error.message
     publish(
       current,
       { phase: 'failed', error: message },
@@ -154,6 +162,31 @@ async function signIn(current: Flow, host: AntigravityChatSignInHost): Promise<v
   }
 }
 
+/** The sentence a person reads for a failed sign-in; the raw error goes only to the log. */
+function antigravitySignInFailure(error: unknown): string {
+  const cause = isAgentSessionPreSpawnError(error) ? error.cause : error
+  if (cause instanceof AntigravitySignInCloseUnprovenError) {
+    return cause.message
+  }
+  if (isAgentSessionPreSpawnError(error) && error.reason === 'runtimeNotInstalled') {
+    return 'Antigravity is not installed on this host. Install it, then start sign-in again.'
+  }
+  if (error instanceof AcpAgentError) {
+    // The server may put its own words in the answer's data rather than its message.
+    const text = `${error.message} ${JSON.stringify(error.data ?? '')}`
+    if (text.includes('SUBSCRIPTION_REQUIRED')) {
+      return 'Google requires an eligible Antigravity subscription for this account.'
+    }
+    if (/onboarding failed|ineligible/i.test(text)) {
+      return "This Google account can't use Antigravity. Sign in with a different account."
+    }
+    if (/access_denied|denied access|cancelled/i.test(text)) {
+      return 'Google sign-in for Antigravity was not approved. Start sign-in again.'
+    }
+  }
+  return 'Google sign-in for Antigravity failed. Start sign-in again.'
+}
+
 /** The link only when it is Google's sign-in page sending the browser back to a loopback port on
  *  this host: it is opened for the person, so anything else is withheld. */
 export function antigravitySignInUrl(line: string): string | null {
@@ -187,15 +220,14 @@ export function cancelAntigravityChatSignIn(flowId: string): AntigravityChatSign
   return signInState.get().value
 }
 
-/** At once without `shown`, else once the revision passes it or after a bounded wait that the
- *  caller's disconnect (`signal`) ends early. `saved` is a stat of the server's own sign-in file,
- *  reread every time; nothing reads the file. */
+/** Calls `onChange` after every change of the sign-in state until the returned unsubscribe. */
+export const subscribeAntigravityChatSignIn = (onChange: () => void): (() => void) =>
+  signInState.subscribe(onChange)
+
+/** `saved` is a stat of the server's own sign-in file, reread on each read; nothing reads it. */
 export async function readAntigravityChatSignInStatus(
-  accountHome: AgentSessionAccountHome,
-  shown?: number,
-  signal?: AbortSignal
+  accountHome: AgentSessionAccountHome
 ): Promise<AntigravityChatSignInStatus> {
-  await signInState.waitForChange(shown, STATUS_WAIT_MS, signal)
   const { value, revision } = signInState.get()
   const token = join(
     requireLegacyAgentSessionAccountHome(accountHome).path,

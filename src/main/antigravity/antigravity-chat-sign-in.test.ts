@@ -12,11 +12,10 @@ import { ANTIGRAVITY_LAUNCH_SPEC, ANTIGRAVITY_SIGN_IN_PROMPT } from '../acp/acp-
 import { prepareAcpStructuredLaunch } from '../acp/acp-structured-launch-preparation'
 import type { ConnectAcpAgent } from '../acp/acp-structured-connection'
 import { AcpScriptedAgent, deferred } from '../acp/acp-scripted-agent.test-support'
-import {
-  antigravitySignInUrl,
-  readAntigravityChatSignInStatus,
-  startAntigravityChatSignIn
-} from './antigravity-chat-sign-in'
+import type { RpcContext } from '../runtime/rpc/core'
+import { ANTIGRAVITY_ACCOUNT_METHODS } from '../runtime/rpc/methods/antigravity-accounts'
+import type { AntigravityChatSignInStatus } from '../../shared/antigravity-account-types'
+import { antigravitySignInUrl, startAntigravityChatSignIn } from './antigravity-chat-sign-in'
 
 vi.mock('../provider-process/provider-process-teardown', () => ({
   terminateProviderProcessTree: vi.fn<typeof terminateProviderProcessTree>(
@@ -85,17 +84,43 @@ async function signInAgainst(link: string, configure?: (connection: AcpAgentConn
   return { agent, folder, flowId, host, child, finishBrowser: () => browserDone.resolve() }
 }
 
-/** The flow's state once it leaves `phase`, followed by revision as a client does. */
+const subscribe = ANTIGRAVITY_ACCOUNT_METHODS[5]
+
+/** Follows the host's sign-in over its subscription, as a client does, until `close`. */
+async function follow(onFrame: (status: AntigravityChatSignInStatus) => void) {
+  const transport = new AbortController()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads only the account home and the stream registry.
+  const ctx = {
+    signal: transport.signal,
+    runtime: {
+      resolveStructuredAgentAccountHome: async () => NO_SIGN_IN,
+      registerOwnedSubscriptionCleanup: (_id: string, cleanup: () => void) => ({
+        releaseIfCurrent: cleanup
+      })
+    }
+  } as unknown as RpcContext
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this method emits only sign-in status snapshots.
+  await subscribe.handler(undefined, ctx, (frame) => onFrame(frame as AntigravityChatSignInStatus))
+  return { close: () => transport.abort() }
+}
+
+/** The flow's state once it leaves `phase`. */
 async function stateAfter(flowId: string, phase: string) {
-  let status = await readAntigravityChatSignInStatus(NO_SIGN_IN)
-  while (status.flow?.flowId === flowId && status.flow.phase === phase) {
-    status = await readAntigravityChatSignInStatus(NO_SIGN_IN, status.revision)
-  }
-  return status.flow
+  const left = Promise.withResolvers<AntigravityChatSignInStatus['flow']>()
+  const { close } = await follow(({ flow }) => {
+    if (flow?.flowId !== flowId || flow.phase !== phase) {
+      left.resolve(flow)
+    }
+  })
+  return left.promise.finally(close)
 }
 
 it('shows the server link, then reads signed in once the browser finishes', async () => {
   const { agent, folder, flowId, finishBrowser } = await signInAgainst(GOOGLE_LINK)
+  const frames: AntigravityChatSignInStatus[] = []
+  const watcher = await follow((frame) => frames.push(frame))
+  // A full snapshot on subscribe, before any change.
+  expect(frames).toEqual([{ revision: expect.any(Number), saved: false, flow: expect.anything() }])
   expect(await stateAfter(flowId, 'starting')).toEqual({
     flowId,
     phase: 'waiting',
@@ -112,6 +137,22 @@ it('shows the server link, then reads signed in once the browser finishes', asyn
     flowId,
     phase: 'signedIn'
   })
+  // Then one frame per newer revision, and none once the transport closes.
+  await vi.waitFor(() => expect(frames.at(-1)?.flow).toEqual({ flowId, phase: 'signedIn' }))
+  const revisions = frames.map(({ revision }) => revision)
+  expect(revisions).toEqual([...new Set(revisions)].sort((a, b) => a - b))
+  watcher.close()
+  const seen = frames.length
+  const next = startAntigravityChatSignIn({
+    launchSources: () => Promise.reject(new Error('raw host detail')),
+    stopLiveChats: async () => {}
+  })
+  // The person reads a plain sentence; the raw error goes only to the log.
+  expect(await stateAfter(next.flowId, 'starting')).toMatchObject({
+    phase: 'failed',
+    error: 'Google sign-in for Antigravity failed. Start sign-in again.'
+  })
+  expect(frames).toHaveLength(seen)
 })
 
 it('never shows a link that is not a Google sign-in back to this host', async () => {

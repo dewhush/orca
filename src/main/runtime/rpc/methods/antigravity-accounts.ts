@@ -1,18 +1,19 @@
-import { defineMethod } from '../core'
+import { defineMethod, defineStreamingMethod } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   AntigravityAccountMutationParams,
   AntigravityAccountTargetParams,
-  AntigravityChatSignInFlowParams,
-  AntigravityChatSignInStatusParams
+  AntigravityChatSignInFlowParams
 } from '../../../../shared/rpc-contract/antigravity-accounts-params'
 import { getAntigravityAccountService } from '../../../antigravity/native-account-host'
 import {
   cancelAntigravityChatSignIn,
   readAntigravityChatSignInStatus,
-  startAntigravityChatSignIn
+  startAntigravityChatSignIn,
+  subscribeAntigravityChatSignIn
 } from '../../../antigravity/antigravity-chat-sign-in'
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { bindStructuredAgentSessionStream } from './structured-agent-session-status-stream'
 
 /** Stops each running Antigravity chat on this host as a worktree teardown stops its chats; the
  *  chat stays, and its next send starts the agent again. */
@@ -22,9 +23,11 @@ async function stopLiveAntigravityChats(): Promise<void> {
     return
   }
   const ids = host.loadedSessionIds().filter((id) => host.sessionAgent(id) === 'antigravity')
-  await Promise.all(ids.map((id) => host.close(id, 'evict')))
+  // Every close settles before the caller's fence releases, even when one rejects.
+  const closes = await Promise.allSettled(ids.map((id) => host.close(id, 'evict')))
   // A close that could not prove its child gone keeps it loaded.
-  if (host.loadedSessionIds().some((id) => ids.includes(id))) {
+  const stillLoaded = host.loadedSessionIds().some((id) => ids.includes(id))
+  if (stillLoaded || closes.some((close) => close.status === 'rejected')) {
     throw new Error('An Antigravity chat on this host could not be stopped. Try again.')
   }
 }
@@ -68,16 +71,38 @@ export const ANTIGRAVITY_ACCOUNT_METHODS = [
     params: null,
     handler: async (_, { runtime }) => startAntigravityChatSignIn(chatSignInHost(runtime))
   }),
-  defineMethod({
-    name: 'accounts.antigravityChatSignInStatus',
+  // A full snapshot on subscribe, then one per revision, until the transport closes.
+  defineStreamingMethod({
+    name: 'accounts.antigravityChatSignInSubscribe',
     permission: 'accounts-admin',
-    params: AntigravityChatSignInStatusParams,
-    handler: async ({ shown }, { runtime, signal }) =>
-      readAntigravityChatSignInStatus(
-        await runtime.resolveStructuredAgentAccountHome('antigravity'),
-        shown,
-        signal
-      )
+    params: null,
+    handler: async (_, ctx, emit) => {
+      const accountHome = await ctx.runtime.resolveStructuredAgentAccountHome('antigravity')
+      // A failed first read fails the subscribe; a later one keeps the client's last snapshot.
+      let shown = await readAntigravityChatSignInStatus(accountHome)
+      const frame = ctx.requestId ? `:${ctx.requestId}` : ''
+      const subscriptionId = `antigravityChatSignIn:${ctx.connectionId ?? 'local'}${frame}`
+      let dispose = (): void => {}
+      const stream = bindStructuredAgentSessionStream(ctx, subscriptionId, () => dispose())
+      if (stream.isClosed()) {
+        return
+      }
+      // Revisions only grow, so a read that ends after a newer one is dropped.
+      const follow = (): void =>
+        void readAntigravityChatSignInStatus(accountHome).then(
+          (next) => {
+            if (next.revision > shown.revision && !stream.isClosed()) {
+              shown = next
+              emit(next)
+            }
+          },
+          (error) => console.warn('[antigravity] sign-in status not read for a subscriber:', error)
+        )
+      dispose = subscribeAntigravityChatSignIn(follow)
+      emit(shown)
+      // Catches a revision between the first read and the subscribe.
+      follow()
+    }
   }),
   defineMethod({
     name: 'accounts.antigravityChatSignInCancel',
@@ -85,4 +110,4 @@ export const ANTIGRAVITY_ACCOUNT_METHODS = [
     params: AntigravityChatSignInFlowParams,
     handler: async ({ flowId }) => cancelAntigravityChatSignIn(flowId)
   })
-]
+] as const

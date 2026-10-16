@@ -52,15 +52,10 @@ export function isBackgroundRuntimeMethod(method: string): boolean {
 }
 
 // Why its own lane: these reply only when slow host work finishes (worktree.rm when Git has deleted
-// the checkout, a model catalog read that waits on the first listing, a sign-in status poll), so
-// they would hold the foreground slots listing refreshes and sends need; the background
-// lane's slots belong to status.
+// the checkout, a model catalog read that waits on the first listing), so they would hold the
+// foreground slots listing refreshes and sends need; the background lane's slots belong to status.
 function isLongWaitRuntimeMethod(method: string): boolean {
-  return (
-    method === 'worktree.rm' ||
-    method === 'agentSession.modelCatalog' ||
-    method === 'accounts.antigravityChatSignInStatus'
-  )
+  return method === 'worktree.rm' || method === 'agentSession.modelCatalog'
 }
 
 export class RuntimeRpcCallQueuePool {

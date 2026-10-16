@@ -17,8 +17,3 @@ export const AntigravityAccountMutationParams = z
 export const AntigravityChatSignInFlowParams = z.strictObject({
   flowId: z.string().min(1).max(64)
 })
-
-export const AntigravityChatSignInStatusParams = z.strictObject({
-  /** The revision the client shows: the host answers once it differs, or after a bounded wait. */
-  shown: z.number().int().nonnegative().optional()
-})
