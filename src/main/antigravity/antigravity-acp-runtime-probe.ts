@@ -19,7 +19,7 @@ function isPinnedServer(initialized: InitializeResponse, version: string): boole
   return (
     initialized.agentInfo?.name === 'antigravity-acp' &&
     initialized.agentInfo.version === version &&
-    (initialized.protocolVersion === 1 || initialized.protocolVersion === 2) &&
+    initialized.protocolVersion === 1 &&
     capabilities?.loadSession === true &&
     Boolean(capabilities.sessionCapabilities?.resume) &&
     Boolean(capabilities.auth?.logout) &&
