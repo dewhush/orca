@@ -19169,7 +19169,7 @@
       "reinstall": "{{agent}} を再インストール",
       "remove": "ダウンロードしたランタイムを削除",
       "removeConfirm": "削除",
-      "removeDescription": "そこで実行中の {{agent}} チャットは停止します。チャット履歴は保持されます。",
+      "removeDescription": "そこで実行中の {{agent}} チャットは停止します。サインインとチャット履歴は保持されます。",
       "removeKeep": "キャンセル",
       "removeTitle": "ダウンロードした {{agent}} ランタイムを {{host}} から削除しますか？",
       "removing": "削除しています…",

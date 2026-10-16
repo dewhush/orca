@@ -19169,7 +19169,7 @@
       "reinstall": "{{agent}} 재설치",
       "remove": "다운로드한 런타임 제거",
       "removeConfirm": "제거",
-      "removeDescription": "그곳에서 실행 중인 {{agent}} 채팅이 중지됩니다. 채팅 기록은 유지됩니다.",
+      "removeDescription": "그곳에서 실행 중인 {{agent}} 채팅이 중지됩니다. 로그인 정보와 채팅 기록은 유지됩니다.",
       "removeKeep": "취소",
       "removeTitle": "다운로드한 {{agent}} 런타임을 {{host}}에서 제거할까요?",
       "removing": "제거하는 중…",

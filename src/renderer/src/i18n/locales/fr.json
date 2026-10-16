@@ -19273,7 +19273,7 @@
       "reinstall": "Réinstaller {{agent}}",
       "remove": "Supprimer le runtime téléchargé",
       "removeConfirm": "Supprimer",
-      "removeDescription": "Les chats {{agent}} en cours sur cet appareil s'arrêtent. L'historique des chats est conservé.",
+      "removeDescription": "Les chats {{agent}} en cours sur cet appareil s'arrêtent. Votre connexion et l'historique des chats sont conservés.",
       "removeKeep": "Annuler",
       "removeTitle": "Supprimer le runtime {{agent}} téléchargé de {{host}} ?",
       "removing": "Suppression…",

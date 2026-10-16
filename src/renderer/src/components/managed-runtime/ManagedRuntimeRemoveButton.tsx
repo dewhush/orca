@@ -60,7 +60,7 @@ export function ManagedRuntimeRemoveButton(props: {
             <DialogDescription>
               {translate(
                 'components.managed-runtime.removeDescription',
-                'Running {{agent}} chats there stop. Chat history is kept.',
+                'Running {{agent}} chats there stop. Your sign-in and chat history are kept.',
                 { agent: agentLabel }
               )}
             </DialogDescription>

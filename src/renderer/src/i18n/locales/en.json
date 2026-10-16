@@ -19352,7 +19352,7 @@
       "reinstall": "Reinstall {{agent}}",
       "remove": "Remove downloaded runtime",
       "removeConfirm": "Remove",
-      "removeDescription": "Running {{agent}} chats there stop. Chat history is kept.",
+      "removeDescription": "Running {{agent}} chats there stop. Your sign-in and chat history are kept.",
       "removeKeep": "Cancel",
       "removeTitle": "Remove the downloaded {{agent}} runtime from {{host}}?",
       "removing": "Removing…",
