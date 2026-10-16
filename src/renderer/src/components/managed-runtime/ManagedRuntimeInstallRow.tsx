@@ -22,12 +22,17 @@ export function ManagedRuntimeInstallRow(props: {
   surface: ManagedRuntimeInstallSurface
 }): React.JSX.Element {
   const { observation, agentLabel, surface } = props
-  const view = managedRuntimeInstallView(observation.snapshot, agentLabel, surface)
   // A click holds its button until the host answers, so a double click starts nothing twice.
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState<ManagedRuntimeInstallAction['kind'] | null>(null)
+  const view = managedRuntimeInstallView(
+    observation.snapshot,
+    agentLabel,
+    surface,
+    pending === 'cancel'
+  )
   const [refusal, setRefusal] = useState<string | null>(null)
   const act = (action: ManagedRuntimeInstallAction): void => {
-    setPending(true)
+    setPending(action.kind)
     setRefusal(null)
     const { subject } = observation
     const request =
@@ -42,7 +47,7 @@ export function ManagedRuntimeInstallRow(props: {
             : translate('components.managed-runtime.failed', 'Installation failed. Try again.')
         )
       )
-      .finally(() => setPending(false))
+      .finally(() => setPending(null))
   }
   const chat = surface === 'chat'
   const alert = refusal ?? view.error
@@ -71,7 +76,11 @@ export function ManagedRuntimeInstallRow(props: {
         ) : null}
         {/* Settings keeps the line while the first read is out, so nothing shifts when it lands. */}
         {view.status !== null || !chat ? (
-          <p role="status" className="min-h-4 text-muted-foreground tabular-nums">
+          <p
+            role="status"
+            aria-live="polite"
+            className="min-h-4 text-muted-foreground tabular-nums"
+          >
             {view.status}
           </p>
         ) : null}
@@ -94,7 +103,7 @@ export function ManagedRuntimeInstallRow(props: {
           <Button
             size="xs"
             variant={action.kind === 'cancel' ? 'ghost' : 'outline'}
-            disabled={pending || (action.kind === 'cancel' && action.disabled === true)}
+            disabled={pending !== null}
             onClick={() => act(action)}
           >
             {action.label}

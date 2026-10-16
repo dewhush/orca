@@ -19154,8 +19154,8 @@
       "extracting": "{{agent}} を展開しています。",
       "failed": "インストールに失敗しました。もう一度お試しください。",
       "install": "{{agent}} をインストール",
+      "installManaged": "Orca のコピーをインストール",
       "installed": "インストール済みです。",
-      "missingProgram": "このホストに {{agent}} をインストールするには {{program}} が必要です。",
       "notInstalled": "インストールされていません。",
       "progress": "{{agent}} のダウンロード",
       "readFailed": "このホストの {{agent}} を確認できませんでした。",
@@ -19163,7 +19163,6 @@
       "retry": "インストールを再試行",
       "unavailable": "{{agent}} はこのホストでは利用できません。",
       "update": "{{agent}} を更新",
-      "updateAvailable": "バージョン {{installed}} がインストールされています。{{version}} を利用できます。",
       "verifying": "ダウンロードを確認しています。"
     }
   },

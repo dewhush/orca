@@ -19258,8 +19258,8 @@
       "extracting": "Extraction de {{agent}}.",
       "failed": "L'installation a échoué. Réessayez.",
       "install": "Installer {{agent}}",
+      "installManaged": "Installer la copie d'Orca",
       "installed": "Installé.",
-      "missingProgram": "L'installation de {{agent}} sur cet hôte nécessite {{program}}.",
       "notInstalled": "Non installé.",
       "progress": "Téléchargement de {{agent}}",
       "readFailed": "Impossible de vérifier {{agent}} sur cet hôte.",
@@ -19267,7 +19267,6 @@
       "retry": "Réessayer l'installation",
       "unavailable": "{{agent}} n'est pas disponible sur cet hôte.",
       "update": "Mettre à jour {{agent}}",
-      "updateAvailable": "Version {{installed}} installée. {{version}} est disponible.",
       "verifying": "Vérification du téléchargement."
     }
   },

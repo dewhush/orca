@@ -19154,8 +19154,8 @@
       "extracting": "正在解压 {{agent}}。",
       "failed": "安装失败。请重试。",
       "install": "安装 {{agent}}",
+      "installManaged": "安装 Orca 的副本",
       "installed": "已安装。",
-      "missingProgram": "在此主机上安装 {{agent}} 需要 {{program}}。",
       "notInstalled": "未安装。",
       "progress": "{{agent}} 下载",
       "readFailed": "无法检查此主机上的 {{agent}}。",
@@ -19163,7 +19163,6 @@
       "retry": "重试安装",
       "unavailable": "{{agent}} 在此主机上不可用。",
       "update": "更新 {{agent}}",
-      "updateAvailable": "已安装版本 {{installed}}。{{version}} 可用。",
       "verifying": "正在检查下载内容。"
     }
   },

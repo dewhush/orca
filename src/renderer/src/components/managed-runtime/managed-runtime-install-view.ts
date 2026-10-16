@@ -6,7 +6,7 @@ export type ManagedRuntimeInstallSurface = 'settings' | 'chat'
 
 export type ManagedRuntimeInstallAction =
   | { kind: 'install'; label: string }
-  | { kind: 'cancel'; label: string; operationId: string; disabled?: true }
+  | { kind: 'cancel'; label: string; operationId: string }
 
 export type ManagedRuntimeInstallView = {
   status: string | null
@@ -21,41 +21,34 @@ const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(1)
 
 function runningView(
   operation: NonNullable<ManagedRuntimeInstallState['operation']>,
-  agent: string
+  agent: string,
+  cancelling: boolean
 ): ManagedRuntimeInstallView | null {
   const { phase, downloadedBytes: done, totalBytes: total } = operation
-  const status =
-    phase === 'downloading'
-      ? total === null
-        ? translate('components.managed-runtime.downloading', 'Downloading {{done}} MB.', {
-            done: megabytes(done)
-          })
-        : translate(
-            'components.managed-runtime.downloadingOf',
-            'Downloading {{done}} MB of {{total}} MB.',
-            { done: megabytes(done), total: megabytes(total) }
-          )
-      : phase === 'extracting'
-        ? translate('components.managed-runtime.extracting', 'Extracting {{agent}}.', { agent })
-        : phase === 'verifying'
-          ? translate('components.managed-runtime.verifying', 'Checking the download.')
-          : phase === 'cancelling'
-            ? translate('components.managed-runtime.cancelling', 'Cancelling…')
-            : null
-  if (status === null) {
+  if (phase !== 'downloading' && phase !== 'extracting' && phase !== 'verifying') {
     return null
   }
+  const status = cancelling
+    ? translate('components.managed-runtime.cancelling', 'Cancelling…')
+    : phase === 'extracting'
+      ? translate('components.managed-runtime.extracting', 'Extracting {{agent}}.', { agent })
+      : phase === 'verifying'
+        ? translate('components.managed-runtime.verifying', 'Checking the download.')
+        : total === null
+          ? translate('components.managed-runtime.downloading', 'Downloading {{done}} MB.', {
+              done: megabytes(done)
+            })
+          : translate(
+              'components.managed-runtime.downloadingOf',
+              'Downloading {{done}} MB of {{total}} MB.',
+              { done: megabytes(done), total: megabytes(total) }
+            )
   const label = translate('components.managed-runtime.cancel', 'Cancel installation')
   return {
     status,
     progress: phase === 'downloading' && total ? Math.min(100, (done / total) * 100) : null,
     error: null,
-    action: {
-      kind: 'cancel',
-      label,
-      operationId: operation.id,
-      ...(phase === 'cancelling' && { disabled: true })
-    }
+    action: { kind: 'cancel', label, operationId: operation.id }
   }
 }
 
@@ -77,7 +70,9 @@ function settledView(
     action: label === null ? null : { kind: 'install', label }
   })
   const install = translate('components.managed-runtime.install', 'Install {{agent}}', { agent })
-  // A start already runs a working copy found outside Orca's releases; it needs no download.
+  // Install, Reinstall and Update belong to Settings; a chat that can start shows its composer.
+  const settings = surface === 'settings'
+  // A chat already runs a copy found outside Orca; Settings offers Orca's, which then runs first.
   if (state.source === 'external') {
     return view(
       translate(
@@ -85,43 +80,27 @@ function settledView(
         'Uses the copy of {{agent}} found on this host.',
         { agent }
       ),
-      null
+      settings && state.available
+        ? translate('components.managed-runtime.installManaged', "Install Orca's copy")
+        : null
     )
   }
   if (state.installedVersion !== null) {
-    // Reinstall and Update belong to Settings; an installed chat shows its composer instead.
-    const settings = surface === 'settings'
-    return state.installedCurrent
-      ? view(
-          translate('components.managed-runtime.installed', 'Installed.'),
-          settings
-            ? translate('components.managed-runtime.reinstall', 'Reinstall {{agent}}', { agent })
-            : null
-        )
-      : view(
-          translate(
-            'components.managed-runtime.updateAvailable',
-            'Version {{installed}} installed. {{version}} is available.',
-            { installed: state.installedVersion, version: state.version ?? '' }
-          ),
-          settings
-            ? translate('components.managed-runtime.update', 'Update {{agent}}', { agent })
-            : null
-        )
+    const label = state.installedCurrent
+      ? translate('components.managed-runtime.reinstall', 'Reinstall {{agent}}', { agent })
+      : translate('components.managed-runtime.update', 'Update {{agent}}', { agent })
+    return view(
+      translate('components.managed-runtime.installed', 'Installed.'),
+      settings ? label : null
+    )
   }
   if (!state.available) {
     return view(
-      state.missingProgram
-        ? translate(
-            'components.managed-runtime.missingProgram',
-            'Installing {{agent}} on this host needs {{program}}.',
-            { agent, program: state.missingProgram }
-          )
-        : translate(
-            'components.managed-runtime.unavailable',
-            '{{agent}} is not available on this host.',
-            { agent }
-          ),
+      translate(
+        'components.managed-runtime.unavailable',
+        '{{agent}} is not available on this host.',
+        { agent }
+      ),
       null
     )
   }
@@ -134,23 +113,25 @@ function settledView(
       install
     )
   }
+  // The chat card's heading already says it is not installed.
+  const idle = settings
+    ? translate('components.managed-runtime.notInstalled', 'Not installed.')
+    : null
   const retry = translate('components.managed-runtime.retry', 'Retry installation')
   if (operation?.kind === 'install' && operation.phase === 'cancelled') {
     return view(translate('components.managed-runtime.cancelled', 'Installation cancelled.'), retry)
   }
-  if (operation?.kind === 'install' && failed) {
-    return view(null, retry)
-  }
-  // The chat card's heading already says it is not installed.
-  const notInstalled = translate('components.managed-runtime.notInstalled', 'Not installed.')
-  return view(surface === 'chat' ? null : notInstalled, install)
+  // A failed first install keeps its status line beside the failure.
+  return view(idle, operation?.kind === 'install' && failed ? retry : install)
 }
 
-/** What an install row says and offers for the host's answer. */
+/** What an install row says and offers for the host's answer. `cancelling`: this row's Cancel is
+ *  still out, so it says so until the host's cancel settles. */
 export function managedRuntimeInstallView(
   snapshot: ManagedRuntimeInstallSnapshot,
   agent: string,
-  surface: ManagedRuntimeInstallSurface
+  surface: ManagedRuntimeInstallSurface,
+  cancelling = false
 ): ManagedRuntimeInstallView {
   if (snapshot.kind !== 'known') {
     return {
@@ -169,7 +150,7 @@ export function managedRuntimeInstallView(
   }
   const { operation } = snapshot.state
   return (
-    (operation ? runningView(operation, agent) : null) ??
+    (operation ? runningView(operation, agent, cancelling) : null) ??
     settledView(snapshot.state, agent, surface)
   )
 }

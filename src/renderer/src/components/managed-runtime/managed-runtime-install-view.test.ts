@@ -53,37 +53,29 @@ describe('managedRuntimeInstallView', () => {
       'Cancel installation',
       null
     ])
+    // Only the row whose Cancel is still out says so; the host publishes no cancelling phase.
     const cancelling = managedRuntimeInstallView(
-      { kind: 'known', state: { ...idle, operation: op({ phase: 'cancelling' }) } },
+      { kind: 'known', state: { ...idle, operation: op({}) } },
       'Fake',
-      'chat'
+      'chat',
+      true
     )
-    expect([cancelling.status, cancelling.action]).toMatchObject([
-      'Cancelling…',
-      { disabled: true }
-    ])
+    expect(cancelling.status).toBe('Cancelling…')
     expect(shown({ operation: op({ phase: 'cancelled' }) }, 'chat')).toEqual([
       'Installation cancelled.',
       'Retry installation',
       null
     ])
-    expect(shown({ operation: op({ phase: 'failed', error: 'No space left.' }) }, 'chat')).toEqual([
-      null,
-      'Retry installation',
-      'No space left.'
-    ])
+    expect(
+      shown({ operation: op({ phase: 'failed', error: 'No space left.' }) }, 'settings')
+    ).toEqual(['Not installed.', 'Retry installation', 'No space left.'])
     expect(shown(installed, 'settings')).toEqual(['Installed.', 'Reinstall Fake', null])
     expect(
       shown({ ...installed, installedVersion: '1.2.0', installedCurrent: false }, 'settings')
-    ).toEqual(['Version 1.2.0 installed. 1.3.0 is available.', 'Update Fake', null])
+    ).toEqual(['Installed.', 'Update Fake', null])
     expect(shown(installed, 'chat')[1]).toBeNull()
     expect(shown({ available: false, version: null }, 'settings')).toEqual([
       'Fake is not available on this host.',
-      null,
-      null
-    ])
-    expect(shown({ available: false, missingProgram: 'unzip' }, 'chat')).toEqual([
-      'Installing Fake on this host needs unzip.',
       null,
       null
     ])
@@ -92,11 +84,13 @@ describe('managedRuntimeInstallView', () => {
       'Install Fake',
       null
     ])
-    expect(shown({ ...installed, source: 'external' }, 'settings')).toEqual([
+    const external = { source: 'external' as const }
+    expect(shown(external, 'settings')).toEqual([
       'Uses the copy of Fake found on this host.',
-      null,
+      "Install Orca's copy",
       null
     ])
+    expect(shown(external, 'chat')[1]).toBeNull()
   })
 
   it('never reads a failed status read as not installed', () => {
