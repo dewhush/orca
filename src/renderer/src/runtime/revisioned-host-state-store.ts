@@ -1,10 +1,9 @@
-import { delayUnlessAborted } from '../../../shared/abort-aware-delay'
+import type { RuntimeRpcSubscriptionHandlers } from './runtime-rpc-subscribe'
 
 /**
- * A host-owned state per subject, read by revision. While any surface observes a subject, one
- * long-poll follows the host, idle included, so another client's change shows up too. A wait is
- * never aborted: the host holds it until it answers either way, so a surface hidden and shown again
- * reuses the one in flight rather than leaving another behind.
+ * A host-owned state per subject, pushed by revision. While any surface observes a subject, one
+ * subscription carries the host's state, idle included, so another client's change shows up too;
+ * the last surface leaving ends it.
  */
 
 export type RevisionedHostSnapshot<S> =
@@ -17,10 +16,13 @@ type Entry<Subject, S> = {
   subject: Subject
   snapshot: RevisionedHostSnapshot<S>
   observers: number
-  following: boolean
+  /** Bumped by every subscribe and every loss; a frame from another generation is stale. */
+  generation: number
+  /** The generation the shown state came from: revisions only order one subscription's frames. */
+  shownGeneration: number
+  stream: { unsubscribe: () => void } | null
+  retry: ReturnType<typeof setTimeout> | null
   failures: number
-  /** Ends the current retry pause early: on the last release, or when the host is back. */
-  wake: AbortController | null
 }
 
 const UNKNOWN = { kind: 'unknown' } as const
@@ -29,8 +31,11 @@ export function createRevisionedHostStateStore<Subject, S extends { revision: nu
   key: (subject: Subject) => string
   /** Subjects with the same host key and a different key answer for a restarted host. */
   hostKey: (subject: Subject) => string
-  /** At once without `shown`, else once the host's revision passes it or after a bounded wait. */
-  read: (subject: Subject, shown: number | undefined) => Promise<S>
+  /** A full state on subscribe, then one per newer revision, until unsubscribed or lost. */
+  subscribe: (
+    subject: Subject,
+    handlers: RuntimeRpcSubscriptionHandlers
+  ) => Promise<{ unsubscribe: () => void }>
 }) {
   const entries = new Map<string, Entry<Subject, S>>()
   const listeners = new Set<() => void>()
@@ -54,82 +59,118 @@ export function createRevisionedHostStateStore<Subject, S extends { revision: nu
         subject,
         snapshot: UNKNOWN,
         observers: 0,
-        following: false,
-        failures: 0,
-        wake: null
+        generation: 0,
+        shownGeneration: 0,
+        stream: null,
+        retry: null,
+        failures: 0
       }
       entries.set(key, entry)
     }
     return entry
   }
 
-  const apply = (entry: Entry<Subject, S>, state: S): void => {
-    // A reply that crossed a newer one on the wire must not roll the view back.
-    if (entry.snapshot.kind !== 'known' || entry.snapshot.state.revision <= state.revision) {
+  const accept = (entry: Entry<Subject, S>, state: S, generation: number): void => {
+    // A new subscription may reach a restarted host whose revisions start again at 0.
+    if (
+      entry.snapshot.kind !== 'known' ||
+      generation !== entry.shownGeneration ||
+      entry.snapshot.state.revision < state.revision
+    ) {
+      entry.shownGeneration = generation
       setSnapshot(entry, { kind: 'known', state })
     }
   }
 
-  const follow = async (entry: Entry<Subject, S>): Promise<void> => {
-    // Starts with a plain read, so a surface shown again reconciles before any wait.
-    let shown: number | undefined
-    entry.failures = 0
-    while (entry.observers > 0) {
-      try {
-        const state = await options.read(entry.subject, shown)
-        entry.failures = 0
-        // Only a host restarted under the same key answers below the revision it was asked for.
-        if (shown !== undefined && state.revision < shown) {
-          setSnapshot(entry, { kind: 'known', state })
-        } else {
-          apply(entry, state)
-        }
-        shown = entry.snapshot.kind === 'known' ? entry.snapshot.state.revision : state.revision
-      } catch {
-        // A known answer stays through a blip; only a first read failing changes what is shown.
-        if (entry.snapshot.kind !== 'known') {
-          setSnapshot(entry, { kind: 'readFailed' })
-        }
-        shown = undefined
-        entry.failures += 1
-        const wake = new AbortController()
-        entry.wake = wake
-        const pause = Math.min(30_000, 1000 * 2 ** (entry.failures - 1))
-        await delayUnlessAborted(pause, wake.signal)
-        entry.wake = null
-      }
+  const isState = (value: unknown): value is S =>
+    typeof value === 'object' &&
+    value !== null &&
+    'revision' in value &&
+    typeof value.revision === 'number'
+
+  const close = (entry: Entry<Subject, S>): void => {
+    entry.generation += 1
+    entry.stream?.unsubscribe()
+    entry.stream = null
+    if (entry.retry) {
+      clearTimeout(entry.retry)
+      entry.retry = null
     }
-    entry.following = false
+  }
+
+  const open = (entry: Entry<Subject, S>): void => {
+    close(entry)
+    const { generation } = entry
+    const current = (): boolean => entry.observers > 0 && entry.generation === generation
+    const lost = (): void => {
+      if (!current()) {
+        return
+      }
+      close(entry)
+      // A known answer stays through a blip; only a first read failing changes what is shown.
+      if (entry.snapshot.kind !== 'known') {
+        setSnapshot(entry, { kind: 'readFailed' })
+      }
+      entry.failures += 1
+      const delay = Math.min(30_000, 1000 * 2 ** (entry.failures - 1))
+      entry.retry = setTimeout(() => open(entry), delay)
+    }
+    void options
+      .subscribe(entry.subject, {
+        onEvent: (result) => {
+          if (current() && isState(result)) {
+            entry.failures = 0
+            accept(entry, result, generation)
+          }
+        },
+        onError: lost,
+        onClose: lost
+      })
+      .then((opened) => {
+        if (current()) {
+          entry.stream = opened
+        } else {
+          opened.unsubscribe()
+        }
+      }, lost)
   }
 
   return {
     read: (subject: Subject): RevisionedHostSnapshot<S> =>
       entries.get(options.key(subject))?.snapshot ?? UNKNOWN,
-    /** Follows the host while any shown surface observes `subject`. Returns the release. */
+    /** Subscribes while at least one shown surface observes `subject`. Returns the release. */
     observe: (subject: Subject): (() => void) => {
       const entry = entryFor(subject)
       entry.observers += 1
-      if (!entry.following) {
-        entry.following = true
-        void follow(entry)
+      if (entry.observers === 1) {
+        entry.failures = 0
+        open(entry)
       }
       return () => {
         entry.observers -= 1
         if (entry.observers === 0) {
-          entry.wake?.abort()
+          close(entry)
         }
       }
     },
-    /** Retries a failed read at once, e.g. when the host answers again after an outage. */
+    /** Resubscribes a lost stream at once, e.g. when the host answers again after an outage. */
     wake: (subject: Subject): void => {
       const entry = entries.get(options.key(subject))
-      if (entry) {
+      if (entry?.retry) {
         entry.failures = 0
-        entry.wake?.abort()
+        open(entry)
       }
     },
-    /** An action's reply, ordered by revision with the long-poll's. */
-    apply: (subject: Subject, state: S): void => apply(entryFor(subject), state),
+    /** Shows an action's reply, ordered by revision with the subscription's frames. */
+    applyReply: async (subject: Subject, request: () => Promise<S>): Promise<void> => {
+      const entry = entryFor(subject)
+      const { generation } = entry
+      const state = await request()
+      // A reply that crossed a resubscribe is stale; the new subscription's snapshot governs.
+      if (entry.generation === generation) {
+        accept(entry, state, generation)
+      }
+    },
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener)
       return () => {

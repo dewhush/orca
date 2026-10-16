@@ -19743,6 +19743,7 @@
       "chatFailed": "登录失败。请重试。",
       "chatSaved": "已在 {{host}} 上保存登录。",
       "chatSignedOut": "在 {{host}} 上登录。",
+      "chatReadFailed": "无法检查 {{host}} 上的登录。",
       "scope": "管理 {{host}} 上的本机 agy 帐户。",
       "signIn": "在此主机上启动 agy 并完成其浏览器登录，然后保存当前帐户。要添加其他帐户，请在 agy 中使用 /logout 并再次登录。",
       "docs": "登录说明",

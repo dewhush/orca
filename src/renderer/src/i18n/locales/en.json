@@ -19879,6 +19879,7 @@
       "chatFailed": "Sign-in failed. Try again.",
       "chatSaved": "Sign-in saved on {{host}}.",
       "chatSignedOut": "Sign in on {{host}}.",
+      "chatReadFailed": "Could not check the sign-in on {{host}}.",
       "scope": "Manage the native agy account on {{host}}.",
       "signIn": "Start agy on this host and complete its browser sign-in, then save the current account. To add a different account, use /logout in agy and sign in again.",
       "docs": "Sign-in instructions",

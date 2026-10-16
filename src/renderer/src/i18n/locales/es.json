@@ -19598,6 +19598,7 @@
       "chatFailed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
       "chatSaved": "Inicio de sesión guardado en {{host}}.",
       "chatSignedOut": "Inicia sesión en {{host}}.",
+      "chatReadFailed": "No se pudo comprobar el inicio de sesión en {{host}}.",
       "retry": "Reintentar",
       "remove": "Eliminar",
       "usage": "Actualizar uso",

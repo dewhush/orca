@@ -7,7 +7,10 @@ import {
   createRevisionedHostStateStore,
   type RevisionedHostSnapshot
 } from './revisioned-host-state-store'
-import { callAntigravityChatSignIn } from './runtime-antigravity-accounts-client'
+import {
+  callAntigravityChatSignIn,
+  subscribeAntigravityChatSignIn
+} from './runtime-antigravity-accounts-client'
 
 /**
  * Each host's Antigravity chat sign-in, followed like an install's status: every Settings row for
@@ -15,6 +18,8 @@ import { callAntigravityChatSignIn } from './runtime-antigravity-accounts-client
  */
 
 export type AntigravityChatSignInView = {
+  /** Whether the host has answered; `readFailed` says nothing about the sign-in. */
+  status: RevisionedHostSnapshot<AntigravityChatSignInStatus>['kind']
   flow: AntigravityChatSignInState | null
   saved: boolean
   /** Why this client's last request failed; empty when it gave no reason. */
@@ -40,8 +45,7 @@ const hostKey = (owner: RuntimeClientTarget): string =>
 const signIns = createRevisionedHostStateStore<RuntimeClientTarget, AntigravityChatSignInStatus>({
   key: hostKey,
   hostKey,
-  read: (owner, shown) =>
-    callAntigravityChatSignIn(owner, 'Status', shown === undefined ? {} : { shown })
+  subscribe: subscribeAntigravityChatSignIn
 })
 const locals = new Map<string, Local>()
 type Shown = {
@@ -143,9 +147,13 @@ export function readAntigravityChatSignIn(owner: RuntimeClientTarget): Antigravi
   if (cached?.snapshot === snapshot && cached.notes === notes) {
     return cached.view
   }
-  // A status the host could not report leaves the row offering sign-in, still correct to act on.
   const known = snapshot.kind === 'known' ? snapshot.state : null
-  const view = { flow: known?.flow ?? null, saved: known?.saved ?? false, ...notes }
+  const view = {
+    status: snapshot.kind,
+    flow: known?.flow ?? null,
+    saved: known?.saved ?? false,
+    ...notes
+  }
   views.set(hostKey(owner), { snapshot, notes, view })
   return view
 }

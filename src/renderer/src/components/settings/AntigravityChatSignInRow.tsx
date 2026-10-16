@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { useClipboardTextCopyFeedback } from '@/hooks/use-clipboard-text-copy-feedback'
@@ -8,7 +8,8 @@ import {
   observeAntigravityChatSignIn,
   readAntigravityChatSignIn,
   startAntigravityChatSignIn,
-  subscribeAntigravityChatSignIns
+  subscribeAntigravityChatSignIns,
+  type AntigravityChatSignInView
 } from '@/runtime/antigravity-chat-sign-in-status'
 import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import type { AntigravityChatSignInState } from '../../../../shared/antigravity-account-types'
@@ -80,6 +81,34 @@ export function antigravityChatSignInBlocked(
   return !source || (operation?.kind === 'remove' && !SETTLED_OPERATION_PHASES.has(operation.phase))
 }
 
+const NOT_FOLLOWED: AntigravityChatSignInView = {
+  status: 'unknown',
+  flow: null,
+  saved: false,
+  error: null,
+  openFailed: false
+}
+
+/** The host's chat sign-in, followed while `owner` is set; the install row beside it reads it too. */
+export function useAntigravityChatSignIn(
+  owner: RuntimeClientTarget | null
+): AntigravityChatSignInView {
+  const shown = owner !== null
+  const environmentId = owner?.kind === 'environment' ? owner.environmentId : null
+  useEffect(
+    () =>
+      shown
+        ? observeAntigravityChatSignIn(
+            environmentId === null ? { kind: 'local' } : { kind: 'environment', environmentId }
+          )
+        : undefined,
+    [shown, environmentId]
+  )
+  const read = (): AntigravityChatSignInView =>
+    owner ? readAntigravityChatSignIn(owner) : NOT_FOLLOWED
+  return useSyncExternalStore(subscribeAntigravityChatSignIns, read, read)
+}
+
 /** This execution host's sign-in for Antigravity chats, run by the host's own server. Every row
  *  for a host shows the same sign-in, a running one included. */
 export function AntigravityChatSignInRow(props: {
@@ -89,27 +118,26 @@ export function AntigravityChatSignInRow(props: {
   disabled: boolean
 }): React.JSX.Element {
   const { owner, label } = props
-  const environmentId = owner.kind === 'environment' ? owner.environmentId : null
-  useEffect(
-    () =>
-      observeAntigravityChatSignIn(
-        environmentId === null ? { kind: 'local' } : { kind: 'environment', environmentId }
-      ),
-    [environmentId]
-  )
-  const read = (): ReturnType<typeof readAntigravityChatSignIn> => readAntigravityChatSignIn(owner)
-  const { flow, saved, openFailed, ...view } = useSyncExternalStore(
-    subscribeAntigravityChatSignIns,
-    read,
-    read
-  )
+  const { status, flow, saved, openFailed, ...view } = useAntigravityChatSignIn(owner)
+  // One start or cancel at a time, so a double click asks the host once.
+  const [pending, setPending] = useState(false)
+  const act = (request: () => Promise<void>): void => {
+    setPending(true)
+    void request().finally(() => setPending(false))
+  }
   const copy = useClipboardTextCopyFeedback(flow?.url ?? '')
   const failed = translate('accounts.antigravity.chatFailed', 'Sign-in failed. Try again.')
   const error = view.error === null ? null : view.error || failed
   const copyLabel = translate('accounts.antigravity.chatCopyLink', 'Copy sign-in link')
   const copyFailed = translate('accounts.antigravity.chatCopyFailed', 'Could not copy the link.')
+  const readFailed = translate(
+    'accounts.antigravity.chatReadFailed',
+    'Could not check the sign-in on {{host}}.',
+    { host: label }
+  )
   const alert =
     error ??
+    (status === 'readFailed' ? readFailed : null) ??
     (flow?.phase === 'failed' ? (flow.error ?? failed) : null) ??
     (copy.status === 'failed' ? copyFailed : null)
   return (
@@ -119,8 +147,9 @@ export function AntigravityChatSignInRow(props: {
           {translate('accounts.antigravity.chatTitle', 'Antigravity chats')}
         </p>
         <p className="text-xs text-muted-foreground">{props.description}</p>
-        <p role="status" className="text-xs text-muted-foreground">
-          {chatSignInLine(flow, saved, openFailed, label)}
+        {/* The line keeps its height until the host answers, so nothing shifts when it does. */}
+        <p role="status" className="min-h-4 text-xs text-muted-foreground">
+          {status === 'known' ? chatSignInLine(flow, saved, openFailed, label) : null}
         </p>
         {alert && (
           <p role="alert" className="text-xs text-destructive">
@@ -145,7 +174,12 @@ export function AntigravityChatSignInRow(props: {
               <TooltipContent>{copyLabel}</TooltipContent>
             </Tooltip>
           )}
-          <Button size="xs" variant="ghost" onClick={() => void cancelAntigravityChatSignIn(owner)}>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => act(() => cancelAntigravityChatSignIn(owner))}
+          >
             {translate('accounts.antigravity.chatCancel', 'Cancel')}
           </Button>
         </div>
@@ -153,8 +187,8 @@ export function AntigravityChatSignInRow(props: {
         <Button
           size="xs"
           variant="outline"
-          disabled={props.disabled}
-          onClick={() => void startAntigravityChatSignIn(owner)}
+          disabled={props.disabled || pending || status !== 'known'}
+          onClick={() => act(() => startAntigravityChatSignIn(owner))}
         >
           {signInButtonLabel(flow, saved, error)}
         </Button>
