@@ -41,6 +41,7 @@ class FakeMultiplexServer {
   droppedFrames = 0
   holdNextManualSnapshot = false
   truncateNextRecoverySnapshot = false
+  unavailableNextRecoverySnapshot = false
   dropNextRecoverySnapshotEnd = false
   holdNextRecoverySnapshot = false
   streamNextRecoverySnapshot = false
@@ -102,6 +103,11 @@ class FakeMultiplexServer {
         this.sendSnapshot(undefined, { truncated: true })
         return
       }
+      if (typeof payload?.requestId !== 'number' && this.unavailableNextRecoverySnapshot) {
+        this.unavailableNextRecoverySnapshot = false
+        this.sendSnapshot(undefined, { unavailable: 'no-serializable-buffer' })
+        return
+      }
       if (typeof payload?.requestId !== 'number' && this.dropNextRecoverySnapshotEnd) {
         this.dropNextRecoverySnapshotEnd = false
         this.sendSnapshot(undefined, { omitEnd: true })
@@ -117,7 +123,7 @@ class FakeMultiplexServer {
 
   private sendSnapshot(
     requestId?: number,
-    options?: { truncated?: boolean; omitEnd?: boolean }
+    options?: { truncated?: boolean; omitEnd?: boolean; unavailable?: string }
   ): void {
     this.send(
       TerminalStreamOpcode.SnapshotStart,
@@ -126,11 +132,12 @@ class FakeMultiplexServer {
         rows: 24,
         seq: options?.truncated ? undefined : this.cursorUnits,
         requestId,
-        truncated: options?.truncated
+        truncated: options?.truncated,
+        unavailable: options?.unavailable
       }),
       0
     )
-    if (!options?.truncated) {
+    if (!options?.truncated && !options?.unavailable) {
       this.send(TerminalStreamOpcode.SnapshotChunk, encodeTerminalStreamText(this.snapshotData), 0)
     }
     if (!options?.omitEnd) {
@@ -349,6 +356,29 @@ describe('remote terminal frame-drop resync', () => {
       server.output('eee')
       expect(snapshots).toEqual(['INITIAL', '\x1b[?2026l\x1b[2J\x1b[3J\x1b[HRECOVERED'])
       expect(data).toEqual(['aaa', 'ddd', 'eee'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Why: the host answers '' with `unavailable` when no serializer ran; that is not a blank pane.
+  it('retries an unavailable recovery instead of erasing the pane', async () => {
+    vi.useFakeTimers()
+    try {
+      const { data, snapshots } = await subscribeClient()
+      server.unavailableNextRecoverySnapshot = true
+
+      server.output('aaa')
+      server.dropNextOutput = true
+      server.output('bbb')
+      server.output('ccc')
+      expect(server.snapshotRequests).toEqual([undefined])
+      expect(snapshots).toEqual(['INITIAL'])
+
+      await vi.advanceTimersByTimeAsync(500)
+      expect(server.snapshotRequests).toEqual([undefined, undefined])
+      expect(snapshots).toEqual(['INITIAL', '\x1b[?2026l\x1b[2J\x1b[3J\x1b[HRECOVERED'])
+      expect(data).toEqual(['aaa'])
     } finally {
       vi.useRealTimers()
     }

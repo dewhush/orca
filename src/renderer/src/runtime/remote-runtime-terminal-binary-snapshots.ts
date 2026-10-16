@@ -72,8 +72,11 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
         recordE2eRemoteTerminalInitialSnapshotTruncated()
       }
       // Initial truncation drops retained history, but the latest-screen image remains authoritative.
+      // Why: a recovery the host marks unavailable carries '' that is not the buffer; applying it erases the pane.
       const snapshotApplied =
-        !stream.snapshotOverflowed && (target === 'initial' || info?.truncated !== true)
+        target === 'recovery'
+          ? classifySnapshotAvailability(stream.snapshotOverflowed, info).kind === 'snapshot'
+          : !stream.snapshotOverflowed && (target === 'initial' || info?.truncated !== true)
       const matchesPendingRequest =
         target === 'request' &&
         pendingRequest &&
