@@ -46,8 +46,8 @@ const localInstallCapable = (): boolean | null =>
   readLocalRuntimeCapabilitiesOrUnknown()?.includes(MANAGED_RUNTIME_INSTALL_RUNTIME_CAPABILITY) ??
   null
 
-/** The install state of the runtime Orca provides for `agent` on the target's host. Follows the
- *  host only while `shown`, so a hidden chat holds no status wait. */
+/** The install state of the runtime Orca provides for `agent` on the target's host. Subscribes
+ *  only while `shown`, so a hidden chat holds no subscription. */
 export function useManagedRuntimeInstall(
   target: RuntimeClientTarget,
   agent: string,
@@ -106,7 +106,7 @@ export function useManagedRuntimeInstall(
     () => (subject && managed && shown ? observeManagedRuntimeInstall(subject) : undefined),
     [subject, managed, shown]
   )
-  // The host answering again after an outage retries a failed read at once, not after its backoff.
+  // The host answering again after an outage resubscribes at once, not after its backoff.
   useEffect(() => {
     if (subject) {
       wakeManagedRuntimeInstall(subject)

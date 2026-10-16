@@ -1,14 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ManagedRuntimeInstallState } from '../../../shared/managed-runtime-install'
+import type { RuntimeRpcSubscriptionHandlers } from './runtime-rpc-subscribe'
 import {
-  installManagedRuntime,
   observeManagedRuntimeInstall,
   readManagedRuntimeInstall,
   type ManagedRuntimeInstallSubject
 } from './managed-runtime-install-status'
 
-const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('./runtime-rpc-client', () => ({ callRuntimeRpc: call }))
+const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn() }))
+vi.mock('./runtime-rpc-client', () => ({ callRuntimeRpc: vi.fn() }))
+vi.mock('./runtime-rpc-subscribe', () => ({ subscribeRuntimeRpc: subscribe }))
 
 const state = (revision: number): ManagedRuntimeInstallState => ({
   agent: 'fake',
@@ -25,19 +26,12 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-it('never reads a failed status read as not installed, nor rolls back to an older reply', async () => {
+it('orders frames by revision and drops a superseded stream after the host restarts', async () => {
   vi.useFakeTimers()
-  let reads = 0
-  call.mockImplementation(async (_target, method: string) => {
-    if (method === 'managedRuntime.install') {
-      return state(1)
-    }
-    reads += 1
-    if (reads === 1) {
-      throw new Error('host unreachable')
-    }
-    // The second read answers; the long-poll after it waits.
-    return reads === 2 ? state(2) : new Promise(() => {})
+  const streams: RuntimeRpcSubscriptionHandlers[] = []
+  subscribe.mockImplementation(async (_target, _method, _params, handlers) => {
+    streams.push(handlers)
+    return { unsubscribe: vi.fn() }
   })
   const subject: ManagedRuntimeInstallSubject = {
     target: { kind: 'local' },
@@ -45,24 +39,22 @@ it('never reads a failed status read as not installed, nor rolls back to an olde
     agent: 'fake'
   }
   const release = observeManagedRuntimeInstall(subject)
-  await vi.advanceTimersByTimeAsync(0)
-  expect(readManagedRuntimeInstall(subject)).toEqual({ kind: 'readFailed' })
-
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(readManagedRuntimeInstall(subject)).toEqual({ kind: 'known', state: state(2) })
-  expect(call).toHaveBeenLastCalledWith(
+  expect(subscribe).toHaveBeenCalledWith(
     { kind: 'local' },
-    'managedRuntime.status',
-    { agent: 'fake', shown: 2 },
+    'managedRuntime.subscribe',
+    { agent: 'fake' },
     expect.anything()
   )
+  streams[0].onEvent(state(4))
+  streams[0].onEvent(state(5))
+  streams[0].onEvent(state(3))
+  expect(readManagedRuntimeInstall(subject)).toEqual({ kind: 'known', state: state(5) })
 
-  await installManagedRuntime(subject)
-  expect(readManagedRuntimeInstall(subject)).toEqual({ kind: 'known', state: state(2) })
+  // The host restarts: its revisions start again, and the old stream's late frame is dropped.
+  streams[0].onClose()
+  await vi.advanceTimersByTimeAsync(1000)
+  streams[1].onEvent(state(0))
+  streams[0].onEvent(state(9))
+  expect(readManagedRuntimeInstall(subject)).toEqual({ kind: 'known', state: state(0) })
   release()
-  // Hiding and showing again reuses the wait the host still holds instead of adding one.
-  const calls = call.mock.calls.length
-  observeManagedRuntimeInstall(subject)()
-  observeManagedRuntimeInstall(subject)()
-  expect(call.mock.calls.length).toBe(calls)
 })
