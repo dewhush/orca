@@ -1,5 +1,5 @@
-// A value read by revision: a reader names the revision it shows and waits, bounded, for a newer
-// one. Its owner keeps its own lifecycle policy; this only publishes and waits.
+// A value read by revision: a reader subscribes to every change, or names the revision it shows and
+// waits, bounded, for a newer one. Its owner keeps its own lifecycle policy; this only publishes.
 
 import { delayUnlessAborted } from '../../shared/abort-aware-delay'
 
@@ -17,6 +17,14 @@ export class RevisionedState<S> {
     this.value = value
     this.revision += 1
     this.changed.forEach((notify) => notify())
+  }
+
+  /** Calls `onChange` after every set until the returned unsubscribe. */
+  subscribe(onChange: () => void): () => void {
+    this.changed.add(onChange)
+    return () => {
+      this.changed.delete(onChange)
+    }
   }
 
   /** Resolves once the revision differs from `shown`, after `waitMs`, or when `signal` aborts. */

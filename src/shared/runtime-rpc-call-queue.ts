@@ -55,11 +55,7 @@ export function isBackgroundRuntimeMethod(method: string): boolean {
 // the checkout, a model catalog read that waits on the first listing), so they would hold the
 // foreground slots listing refreshes and sends need; the background lane's slots belong to status.
 function isLongWaitRuntimeMethod(method: string): boolean {
-  return (
-    method === 'worktree.rm' ||
-    method === 'agentSession.modelCatalog' ||
-    method === 'managedRuntime.status'
-  )
+  return method === 'worktree.rm' || method === 'agentSession.modelCatalog'
 }
 
 export class RuntimeRpcCallQueuePool {

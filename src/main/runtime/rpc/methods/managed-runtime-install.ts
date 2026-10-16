@@ -1,11 +1,11 @@
 // The runtime Orca installs for an agent, on the host that receives the call: the one that runs
-// that agent's chats. Needs no workspace. Negotiated by `managed-runtime.install.v1`.
+// that agent's chats. Needs no workspace. Negotiated by `managed-runtime.install.v1`. Status is
+// pushed: a snapshot on subscribe, then one per state revision.
 
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   ManagedRuntimeAgentParams,
-  ManagedRuntimeCancelParams,
-  ManagedRuntimeStatusParams
+  ManagedRuntimeCancelParams
 } from '../../../../shared/rpc-contract/managed-runtime-install-params'
 import { acpLaunchSpecFor } from '../../../acp/acp-launch-specs'
 import { resolveAcpLaunchCommand } from '../../../acp/acp-structured-launch-resolution'
@@ -14,7 +14,8 @@ import { isAgentSessionPreSpawnError } from '../../../native-chat/agent-session-
 import { getProfileUserDataPath } from '../../../orca-profiles/profile-storage-paths'
 import { resolveHostStructuredAgentLaunchEnvironment } from '../../structured-agent-launch-support'
 import { isPathInsideOrEqual } from '../../../../shared/cross-platform-path'
-import { defineMethod } from '../core'
+import { defineMethod, defineStreamingMethod } from '../core'
+import { bindStructuredAgentSessionStream } from './structured-agent-session-status-stream'
 
 const installations = new Map<string, ManagedRuntimeInstallation>()
 
@@ -55,12 +56,50 @@ function installationFor(agent: string, runtime: OrcaRuntimeService): ManagedRun
 }
 
 export const MANAGED_RUNTIME_INSTALL_METHODS = [
-  defineMethod({
-    name: 'managedRuntime.status',
+  defineStreamingMethod({
+    name: 'managedRuntime.subscribe',
     permission: 'workspace',
-    params: ManagedRuntimeStatusParams,
-    handler: async ({ agent, shown }, { runtime, signal }) =>
-      installationFor(agent, runtime).status(shown, signal)
+    params: ManagedRuntimeAgentParams,
+    handler: async ({ agent }, ctx, emit) => {
+      const installation = installationFor(agent, ctx.runtime)
+      // A failed first read fails the subscribe; a later one keeps the client's last snapshot.
+      let shown = await installation.status()
+      const frame = ctx.requestId ? `:${ctx.requestId}` : ''
+      const subscriptionId = `managedRuntime:${ctx.connectionId ?? 'local'}:${agent}${frame}`
+      let dispose = (): void => {}
+      const stream = bindStructuredAgentSessionStream(ctx, subscriptionId, () => dispose())
+      if (stream.isClosed()) {
+        return
+      }
+      let reading = false
+      let again = false
+      // One read at a time; revisions during it coalesce into one more read.
+      const follow = async (): Promise<void> => {
+        again = true
+        if (reading) {
+          return
+        }
+        reading = true
+        try {
+          while (again && !stream.isClosed()) {
+            again = false
+            const next = await installation.status(false)
+            if (next.revision !== shown.revision && !stream.isClosed()) {
+              shown = next
+              emit(next)
+            }
+          }
+        } catch (error) {
+          console.warn(`[managed-runtime] ${agent} status not read for a subscriber:`, error)
+        } finally {
+          reading = false
+        }
+      }
+      dispose = installation.subscribe(() => void follow())
+      emit(shown)
+      // Catches a revision between the first read and the subscribe.
+      void follow()
+    }
   }),
   defineMethod({
     name: 'managedRuntime.install',
@@ -77,9 +116,8 @@ export const MANAGED_RUNTIME_INSTALL_METHODS = [
     permission: 'host-admin',
     params: ManagedRuntimeCancelParams,
     handler: async ({ agent, operationId }, { runtime }) => {
-      const installation = installationFor(agent, runtime)
-      installation.cancel(operationId)
-      return installation.status()
+      // The outcome once the run has unwound: `cancelled`, or `succeeded` if it had committed.
+      return await installationFor(agent, runtime).cancel(operationId)
     }
   })
 ] as const

@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import type * as LaunchSpecs from '../../../acp/acp-launch-specs'
-import { classifyRuntimeLongPoll } from '../../runtime-rpc/runtime-rpc-long-poll'
 import type { RpcContext } from '../core'
 import { MANAGED_RUNTIME_INSTALL_METHODS } from './managed-runtime-install'
 
@@ -43,27 +42,42 @@ vi.mock('../../../acp/acp-launch-specs', async (importOriginal) => {
   }
 })
 
-const [statusMethod, installMethod, cancelMethod] = MANAGED_RUNTIME_INSTALL_METHODS
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers read only the settings store.
-const ctx = { runtime: { requireStore: () => ({ getSettings: () => ({}) }) } } as unknown as RpcContext
+const [subscribeMethod, installMethod, cancelMethod] = MANAGED_RUNTIME_INSTALL_METHODS
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers read only the settings store and the stream registry.
+const ctx = {
+  runtime: {
+    requireStore: () => ({ getSettings: () => ({}) }),
+    registerOwnedSubscriptionCleanup: (_id: string, cleanup: () => void) => ({
+      releaseIfCurrent: cleanup
+    })
+  }
+} as unknown as RpcContext
 
-it('answers a status read naming its revision once another client starts the install', async () => {
+it('pushes a snapshot, then the install another client starts, until the transport closes', async () => {
   host.dataDirectory = await mkdtemp(join(tmpdir(), 'orca-runtime-install-rpc-'))
-  const status = statusMethod.handler
-  const request = { id: '1', authToken: '', method: statusMethod.name }
-  expect(classifyRuntimeLongPoll({ ...request, params: { agent: 'grok' } })).toBe(null)
-  expect(classifyRuntimeLongPoll({ ...request, params: { agent: 'grok', shown: 0 } })).toBe('wait')
-  const idle = await status({ agent: 'grok' }, ctx)
-  expect(idle).toMatchObject({ available: true, installedVersion: null, operation: null })
-  const watcher = status({ agent: 'grok', shown: idle.revision }, ctx)
+  const transport = new AbortController()
+  const frames: unknown[] = []
+  const watcher = { ...ctx, signal: transport.signal }
+  await subscribeMethod.handler({ agent: 'grok' }, watcher, (frame) => frames.push(frame))
+  expect(frames).toEqual([
+    expect.objectContaining({ available: true, installedVersion: null, operation: null })
+  ])
   const started = await installMethod.handler({ agent: 'grok' }, ctx)
-  const seen = await watcher
-  expect(seen.operation).toMatchObject({ id: started.operation?.id, phase: 'downloading' })
-
-  const operationId = String(seen.operation?.id)
-  await cancelMethod.handler({ agent: 'grok', operationId }, ctx)
-  await vi.waitFor(async () =>
-    expect((await status({ agent: 'grok' }, ctx)).operation?.phase).toBe('cancelled')
+  const id = String(started.operation?.id)
+  await vi.waitFor(() =>
+    expect(frames.at(-1)).toMatchObject({ operation: { id, phase: 'downloading' } })
   )
+  // Cancel answers with the outcome once the run has unwound.
+  const outcome = await cancelMethod.handler({ agent: 'grok', operationId: id }, ctx)
+  expect(outcome).toMatchObject({ id, phase: 'cancelled' })
+  await vi.waitFor(() =>
+    expect(frames.at(-1)).toMatchObject({ operation: { phase: 'cancelled' } })
+  )
+
+  transport.abort()
+  const seen = frames.length
+  const again = await installMethod.handler({ agent: 'grok' }, ctx)
+  await cancelMethod.handler({ agent: 'grok', operationId: String(again.operation?.id) }, ctx)
+  expect(frames).toHaveLength(seen)
   await rm(host.dataDirectory, { recursive: true, force: true })
 })

@@ -17,7 +17,6 @@ import {
 } from './managed-runtime-release'
 import { installFailureText, installRuntimeRelease } from './managed-runtime-release-install'
 
-const STATUS_WAIT_MS = 25_000
 const DEADLINE_MS = 45 * 60_000
 
 export type ManagedRuntimeInstallationDeps = {
@@ -46,14 +45,13 @@ export class ManagedRuntimeInstallation {
     this.mutation = this.reclaim()
   }
 
-  /** At once without `shown`, else once the revision passes it or after a bounded wait. Disk and
-   *  PATH are reread on a first read and when the phase changes, never for byte progress alone. */
-  async status(shown?: number, signal?: AbortSignal): Promise<ManagedRuntimeInstallState> {
-    await this.state.waitForChange(shown, STATUS_WAIT_MS, signal)
+  /** Disk and PATH are reread on a `fresh` read and when the phase changes, never for byte
+   *  progress alone. */
+  async status(fresh = true): Promise<ManagedRuntimeInstallState> {
     const { value: operation, revision } = this.state.get()
     const phase = `${operation?.id}:${operation?.phase}`
     let facts = this.facts
-    if (shown === undefined || facts?.phase !== phase) {
+    if (fresh || facts?.phase !== phase) {
       const read = this.readInstalledFacts()
       facts = { phase, read }
       this.facts = facts
@@ -63,6 +61,11 @@ export class ManagedRuntimeInstallation {
       })
     }
     return { agent: this.agent, revision, ...(await facts.read), operation }
+  }
+
+  /** Calls `onChange` after every state revision until the returned unsubscribe. */
+  subscribe(onChange: () => void): () => void {
+    return this.state.subscribe(onChange)
   }
 
   private async readInstalledFacts(): Promise<InstalledFacts> {
