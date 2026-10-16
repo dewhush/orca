@@ -44,6 +44,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'attachmentInvalid',
   'attachmentUnreadable',
   'emptyMessage',
+  /** One of the agent's own commands that its chats do not run, sent as a whole message. */
+  'commandUnavailable',
   'queueFull',
   'writeFailed',
   'cancelled',

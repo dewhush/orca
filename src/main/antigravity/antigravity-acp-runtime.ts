@@ -4,6 +4,7 @@
 
 import { join } from 'node:path'
 import type { ManagedRuntime, ManagedRuntimePin } from '../node-runtime/managed-runtime-release'
+import { probeAntigravityAcpServer } from './antigravity-acp-runtime-probe'
 
 const VERSION = '1.3.0'
 const RELEASES = 'https://dl.google.com/agy-extensions/releases'
@@ -81,5 +82,7 @@ export const ANTIGRAVITY_ACP_COMMAND = COMMAND
 export const ANTIGRAVITY_ACP_RUNTIME: ManagedRuntime = {
   label: 'Antigravity',
   root: (dataDirectory) => join(dataDirectory, 'agent-runtimes', 'antigravity'),
-  pin
+  pin,
+  validate: (folder, pinned, signal) =>
+    probeAntigravityAcpServer(join(folder, COMMAND), pinned.version, signal)
 }

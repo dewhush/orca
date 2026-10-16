@@ -18064,6 +18064,7 @@
         "attachmentInvalid": "このメッセージの添付ファイルは Agent に送信できません。",
         "attachmentUnreadable": "このメッセージの添付ファイルを読み取れなかったため、メッセージは送信されませんでした。",
         "emptyMessage": "このメッセージは空のため、送信されませんでした。",
+        "commandUnavailable": "このコマンドは {{agent}} のチャットでは使用できないため、送信されませんでした。",
         "queueFull": "Agent を待っているメッセージが多すぎたため、このメッセージは送信されませんでした。",
         "writeFailed": "Orca はこのメッセージを Agent に渡せなかったため、送信されませんでした。",
         "cancelled": "このメッセージは Agent が処理を始める前に取り消されました。",

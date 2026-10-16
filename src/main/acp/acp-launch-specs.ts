@@ -48,6 +48,10 @@ import {
   ANTIGRAVITY_ACP_COMMAND,
   ANTIGRAVITY_ACP_RUNTIME
 } from '../antigravity/antigravity-acp-runtime'
+import {
+  ANTIGRAVITY_ACP_ENV,
+  scrubAntigravityAcpEnvironment
+} from '../antigravity/antigravity-acp-environment'
 
 /** How an agent lists its models without a session: from its `initialize` answer (plus extension
  *  requests), from a listing command, or not at all. Never `authenticate` or `session/new`. */
@@ -103,8 +107,9 @@ export type AcpLaunchSpec = {
   supportsVersion?(version: string): boolean
   /** Where the agent installs its own binary, searched after PATH. */
   installDirectories(input: { env: Readonly<Record<string, string>>; homePath: string }): string[]
-  /** A pinned copy Orca installs under its data folder when the person asks, searched last; a
-   *  start never installs it. A spec with one names no `supportsVersion`. */
+  /** A pinned copy Orca installs under its data folder when the person asks; a start runs an
+   *  installed release before PATH and never installs one. A spec with one names no
+   *  `supportsVersion`. */
   managedRuntime?: ManagedRuntime
   /** The agent's `mode` config option value per chat permission mode, through which it enforces
    *  the mode itself; Orca then answers none of its permission requests for the person. */
@@ -234,31 +239,6 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   sessionHistory: OMP_SESSION_HISTORY
 }
 
-// Applied after the scrub: the server's sign-in stays in its own folder's file rather than the
-// keychain slot every server on the machine shares, and it never opens a browser itself.
-const ANTIGRAVITY_ACP_ENV = { AGY_ACP_FORCE_FILE_STORAGE: '1', BROWSER: 'true' }
-
-/** Drops what would sign the server in some other way or run another harness than its own. */
-function scrubAntigravityAcpEnvironment(
-  env: Record<string, string>,
-  inherited: NodeJS.ProcessEnv
-): string[] {
-  const removed = [...new Set([...Object.keys(env), ...Object.keys(inherited)])].filter(
-    (key) =>
-      !Object.hasOwn(ANTIGRAVITY_ACP_ENV, key) &&
-      (key === 'GEMINI_API_KEY' ||
-        key === 'ANTIGRAVITY_HARNESS_PATH' ||
-        key === 'GCLOUD_PROJECT' ||
-        key === 'CLOUDSDK_CORE_PROJECT' ||
-        key.startsWith('GOOGLE_') ||
-        key.startsWith('AGY_ACP_'))
-  )
-  for (const key of removed) {
-    delete env[key]
-  }
-  return removed
-}
-
 // `agy` keeps its own conversations apart from the ACP server's, so its arguments resume none.
 const ANTIGRAVITY_SESSION_HISTORY: StructuredAgentSessionHistory = {
   rowAgents: ['antigravity'],
@@ -288,7 +268,6 @@ const ANTIGRAVITY_LAUNCH_SPEC: AcpLaunchSpec = {
   managedRuntime: ANTIGRAVITY_ACP_RUNTIME,
   // Its yolo mode still asks the person questions and administrative reviews.
   permissionModeConfig: {
-    configId: 'mode',
     values: { ask: 'default', 'accept-edits': 'auto_edit', 'full-access': 'yolo' }
   },
   imagePrompts: true,

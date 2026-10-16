@@ -18025,6 +18025,7 @@
         "attachmentInvalid": "Un archivo adjunto de este mensaje no se puede enviar al agente.",
         "attachmentUnreadable": "No se pudo leer un archivo adjunto de este mensaje, así que el mensaje no se envió.",
         "emptyMessage": "Este mensaje está vacío, así que no se envió.",
+        "commandUnavailable": "Este comando no está disponible en los chats de {{agent}}, así que no se envió.",
         "queueFull": "Había demasiados mensajes esperando al agente, así que este no se envió.",
         "writeFailed": "Orca no pudo entregar este mensaje al agente, así que no se envió.",
         "cancelled": "Este mensaje se retiró antes de que el agente empezara a procesarlo.",

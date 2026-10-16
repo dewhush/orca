@@ -18029,6 +18029,7 @@
         "attachmentInvalid": "此消息中的附件无法发送给智能体。",
         "attachmentUnreadable": "无法读取此消息中的附件，因此消息未发送。",
         "emptyMessage": "此消息为空，因此未发送。",
+        "commandUnavailable": "此命令在 {{agent}} 聊天中不可用，因此未发送。",
         "queueFull": "等待智能体处理的消息过多，因此此消息未发送。",
         "writeFailed": "Orca 无法将此消息交给智能体，因此消息未发送。",
         "cancelled": "此消息在智能体开始处理前已撤回。",

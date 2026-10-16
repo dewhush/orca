@@ -18133,6 +18133,7 @@
         "attachmentInvalid": "Une pièce jointe de ce message ne peut pas être envoyée à l'agent.",
         "attachmentUnreadable": "Une pièce jointe de ce message n'a pas pu être lue, le message n'a donc pas été envoyé.",
         "emptyMessage": "Ce message est vide, il n'a donc pas été envoyé.",
+        "commandUnavailable": "Cette commande n'est pas disponible dans les chats {{agent}}, elle n'a donc pas été envoyée.",
         "queueFull": "Trop de messages attendaient l'agent, celui-ci n'a donc pas été envoyé.",
         "writeFailed": "Orca n'a pas pu transmettre ce message à l'agent, il n'a donc pas été envoyé.",
         "cancelled": "Ce message a été retiré avant que l'agent ne commence à le traiter.",

@@ -104,6 +104,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
   attachmentUnreadable:
     "An attachment on this message couldn't be read, so the message was not sent.",
   emptyMessage: 'This message is empty, so it was not sent.',
+  commandUnavailable: "This command isn't available in {{agent}} chats, so it was not sent.",
   queueFull: 'Too many messages were waiting for the agent, so this one was not sent.',
   writeFailed: "Orca couldn't hand this message to the agent, so it was not sent.",
   cancelled: 'This message was withdrawn before the agent started it.',
