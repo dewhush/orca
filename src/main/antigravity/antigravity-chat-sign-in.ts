@@ -32,6 +32,11 @@ import {
   AntigravitySignInCloseUnprovenError,
   closeAntigravitySignInOwner
 } from './antigravity-chat-account'
+import {
+  antigravitySignInCallback,
+  sendAntigravitySignInCallback,
+  type AntigravitySignInPending
+} from './antigravity-sign-in-callback'
 
 // The server's own wait for the browser.
 const FLOW_DEADLINE_MS = 300_000
@@ -41,7 +46,13 @@ const INVALID_LINK = {
 } as const
 
 type Phase = AntigravityChatSignInState['phase']
-type Flow = { id: string; ended: AbortController; done: Promise<void> }
+type Flow = {
+  id: string
+  ended: AbortController
+  done: Promise<void>
+  pending?: AntigravitySignInPending
+  callbackSent?: boolean
+}
 
 export type AntigravityChatSignInHost = {
   launchSources(): ReturnType<typeof structuredAgentHostLaunchSources>
@@ -54,7 +65,8 @@ let flow: Flow | null = null
 // The latest flow's state, which every client follows by revision.
 const signInState = new RevisionedState<AntigravityChatSignInState | null>(null)
 
-const settled = (phase: Phase): boolean => phase !== 'starting' && phase !== 'waiting'
+const settled = (phase: Phase): boolean =>
+  phase !== 'starting' && phase !== 'waiting' && phase !== 'verifying'
 
 function publish(
   current: Flow,
@@ -139,8 +151,13 @@ async function signIn(current: Flow, host: AntigravityChatSignInHost): Promise<v
         clientInfo: { name: 'orca', version: '1' },
         signInPrompt: spec.signInPrompt,
         signInLink: (line) => {
-          const url = antigravitySignInUrl(line)
-          publish(current, url ? { phase: 'waiting', url } : INVALID_LINK)
+          const link = antigravitySignInUrl(line)
+          // Once a pasted address went out, the server's answer to it is what the flow waits on.
+          if (current.callbackSent) {
+            return
+          }
+          current.pending = link ?? undefined
+          publish(current, link ? { phase: 'waiting', url: link.url } : INVALID_LINK)
         }
       }
     )
@@ -189,7 +206,9 @@ function antigravitySignInFailure(error: unknown): string {
 
 /** The link only when it is Google's sign-in page sending the browser back to a loopback port on
  *  this host: it is opened for the person, so anything else is withheld. */
-export function antigravitySignInUrl(line: string): string | null {
+export function antigravitySignInUrl(
+  line: string
+): ({ url: string } & AntigravitySignInPending) | null {
   const link = line.trim().slice(ANTIGRAVITY_SIGN_IN_PROMPT.length).trim()
   if (link.length > 16_384 || /\s/.test(link) || !URL.canParse(link)) {
     return null
@@ -209,7 +228,7 @@ export function antigravitySignInUrl(line: string): string | null {
     /^\S{1,512}$/.test(one('state')) &&
     port >= 1024 &&
     port <= 65_535
-  return valid ? link : null
+  return valid ? { url: link, redirectUri: one('redirect_uri'), state: one('state') } : null
 }
 
 export function cancelAntigravityChatSignIn(flowId: string): AntigravityChatSignInState | null {
@@ -217,6 +236,40 @@ export function cancelAntigravityChatSignIn(flowId: string): AntigravityChatSign
     throw new Error('That Antigravity sign-in is no longer running.')
   }
   publish(flow, { phase: 'cancelled' })
+  return signInState.get().value
+}
+
+const CALLBACK_NOT_SENT =
+  "Couldn't pass the sign-in on to Antigravity on this host. Start sign-in again."
+
+/** Sends the address the browser ended on to the server's own listener, for a browser on another
+ *  computer than this host; at most once per flow. */
+export async function completeAntigravityChatSignIn(
+  flowId: string,
+  callbackUrl: string
+): Promise<AntigravityChatSignInState | null> {
+  const current = flow
+  const shown = signInState.get().value
+  if (current?.id !== flowId || shown?.flowId !== flowId || current.callbackSent) {
+    throw new Error(
+      current?.id === flowId && current.callbackSent
+        ? 'That address was already sent. Wait for Google to finish signing in.'
+        : 'That Antigravity sign-in is no longer running. Start sign-in again.'
+    )
+  }
+  if (shown.phase !== 'waiting' || !current.pending) {
+    throw new Error('Wait for the Google sign-in link before you paste an address.')
+  }
+  const callback = antigravitySignInCallback(current.pending, callbackUrl)
+  current.callbackSent = true
+  publish(current, { phase: 'verifying' })
+  try {
+    await sendAntigravitySignInCallback(callback)
+  } catch (error) {
+    console.warn('[antigravity] pasted sign-in address not delivered:', error)
+    publish(current, { phase: 'failed', error: CALLBACK_NOT_SENT })
+    throw new Error(CALLBACK_NOT_SENT)
+  }
   return signInState.get().value
 }
 

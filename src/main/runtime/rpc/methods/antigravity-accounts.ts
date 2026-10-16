@@ -3,11 +3,13 @@ import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   AntigravityAccountMutationParams,
   AntigravityAccountTargetParams,
+  AntigravityChatSignInCompleteParams,
   AntigravityChatSignInFlowParams
 } from '../../../../shared/rpc-contract/antigravity-accounts-params'
 import { getAntigravityAccountService } from '../../../antigravity/native-account-host'
 import {
   cancelAntigravityChatSignIn,
+  completeAntigravityChatSignIn,
   readAntigravityChatSignInStatus,
   startAntigravityChatSignIn,
   subscribeAntigravityChatSignIn
@@ -109,5 +111,12 @@ export const ANTIGRAVITY_ACCOUNT_METHODS = [
     permission: 'accounts-admin',
     params: AntigravityChatSignInFlowParams,
     handler: async ({ flowId }) => cancelAntigravityChatSignIn(flowId)
+  }),
+  // The address a browser on another computer ended on, sent to the listener on this host.
+  defineMethod({
+    name: 'accounts.antigravityChatSignInComplete',
+    permission: 'accounts-admin',
+    params: AntigravityChatSignInCompleteParams,
+    handler: async ({ flowId, callbackUrl }) => completeAntigravityChatSignIn(flowId, callbackUrl)
   })
 ] as const

@@ -1,5 +1,6 @@
 // The chat sign-in against a scripted Antigravity server.
 
+import { createServer } from 'node:http'
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +16,11 @@ import { AcpScriptedAgent, deferred } from '../acp/acp-scripted-agent.test-suppo
 import type { RpcContext } from '../runtime/rpc/core'
 import { ANTIGRAVITY_ACCOUNT_METHODS } from '../runtime/rpc/methods/antigravity-accounts'
 import type { AntigravityChatSignInStatus } from '../../shared/antigravity-account-types'
-import { antigravitySignInUrl, startAntigravityChatSignIn } from './antigravity-chat-sign-in'
+import {
+  antigravitySignInUrl,
+  completeAntigravityChatSignIn,
+  startAntigravityChatSignIn
+} from './antigravity-chat-sign-in'
 
 vi.mock('../provider-process/provider-process-teardown', () => ({
   terminateProviderProcessTree: vi.fn<typeof terminateProviderProcessTree>(
@@ -153,6 +158,33 @@ it('shows the server link, then reads signed in once the browser finishes', asyn
     error: 'Google sign-in for Antigravity failed. Start sign-in again.'
   })
   expect(frames).toHaveLength(seen)
+})
+
+it('signs in from the address a browser on another computer ended on', async () => {
+  const received = Promise.withResolvers<string | undefined>()
+  let finish = (): void => {}
+  // Stands in for the server's own listener, which finishes once Google's answer reaches it.
+  const listener = createServer((request, response) => {
+    received.resolve(request.url)
+    response.end('ok')
+    finish()
+  })
+  await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve))
+  const address = listener.address()
+  const port = typeof address === 'object' ? address?.port : undefined
+  try {
+    const link = GOOGLE_LINK.replace('41234', String(port))
+    const { flowId, finishBrowser } = await signInAgainst(link)
+    finish = finishBrowser
+    expect(await stateAfter(flowId, 'starting')).toMatchObject({ phase: 'waiting' })
+    const pasted = `http://127.0.0.1:${port}/?state=s1&code=c1`
+    await completeAntigravityChatSignIn(flowId, pasted)
+    expect(await received.promise).toBe('/?state=s1&code=c1')
+    expect(await stateAfter(flowId, 'verifying')).toEqual({ flowId, phase: 'signedIn' })
+    await expect(completeAntigravityChatSignIn(flowId, pasted)).rejects.toThrow('already sent')
+  } finally {
+    listener.close()
+  }
 })
 
 it('never shows a link that is not a Google sign-in back to this host', async () => {

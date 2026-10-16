@@ -22,6 +22,8 @@ export type AntigravityAccountState = {
 export const ANTIGRAVITY_CHAT_SIGN_IN_PHASES = [
   'starting',
   'waiting',
+  // A pasted address was sent to the server; its answer is next.
+  'verifying',
   'signedIn',
   'failed',
   'cancelled',
