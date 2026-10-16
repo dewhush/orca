@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { act, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { AntigravityChatSignInState } from '../../../../shared/antigravity-account-types'
+import type { RuntimeClientTarget } from '../../../../shared/runtime-client-target'
 import { callAntigravityChatSignIn } from '@/runtime/runtime-antigravity-accounts-client'
 import { AntigravityChatSignInRow } from './AntigravityChatSignInRow'
 import { TooltipProvider } from '../ui/tooltip'
@@ -12,40 +13,62 @@ type FakeHost = {
   revision: number
   saved: boolean
   flow: AntigravityChatSignInState | null
-  start: Promise<{ flowId: string }> | null
   streams: Set<(status: unknown) => void>
 }
-// The host's sign-in status, pushed to every subscriber by revision as the host does.
-const { host, publish, status } = vi.hoisted(() => {
-  const host: FakeHost = { revision: 0, saved: false, flow: null, start: null, streams: new Set() }
-  const status = () => ({ revision: host.revision, saved: host.saved, flow: host.flow })
-  const publish = (flow: AntigravityChatSignInState, saved = false): void => {
-    Object.assign(host, { revision: host.revision + 1, flow, saved })
-    host.streams.forEach((emit) => emit(status()))
+// Each host's own sign-in status, pushed to its subscribers by revision as the host does.
+const fake = vi.hoisted(() => {
+  const hosts = new Map<string, FakeHost>()
+  const hostOf = (owner: RuntimeClientTarget): FakeHost => {
+    const key = owner.kind === 'local' ? '' : owner.environmentId
+    let host = hosts.get(key)
+    if (!host) {
+      host = { revision: 0, saved: false, flow: null, streams: new Set() }
+      hosts.set(key, host)
+    }
+    return host
   }
-  return { host, publish, status }
+  const status = (host: FakeHost) => ({
+    revision: host.revision,
+    saved: host.saved,
+    flow: host.flow
+  })
+  const publish = (owner: RuntimeClientTarget, flow: AntigravityChatSignInState, saved = false) => {
+    const host = hostOf(owner)
+    Object.assign(host, { revision: host.revision + 1, flow, saved })
+    host.streams.forEach((emit) => emit(status(host)))
+  }
+  const api: {
+    hostOf: typeof hostOf
+    status: typeof status
+    publish: typeof publish
+    start: Promise<{ flowId: string }> | null
+  } = { hostOf, status, publish, start: null }
+  return api
 })
+const { publish } = fake
 vi.mock('@/runtime/runtime-antigravity-accounts-client', () => ({
-  callAntigravityChatSignIn: vi.fn(async (_owner: unknown, action: string) => {
+  callAntigravityChatSignIn: vi.fn(async (owner: RuntimeClientTarget, action: string) => {
     if (action === 'Start') {
-      if (host.start) {
-        return host.start
+      if (fake.start) {
+        return fake.start
       }
-      publish({ flowId: 'f', phase: 'starting' })
+      fake.publish(owner, { flowId: 'f', phase: 'starting' })
       return { flowId: 'f' }
     }
     return undefined
   }),
   subscribeAntigravityChatSignIn: vi.fn(
-    async (_owner: unknown, handlers: { onEvent: (status: unknown) => void }) => {
+    async (owner: RuntimeClientTarget, handlers: { onEvent: (status: unknown) => void }) => {
+      const host = fake.hostOf(owner)
       host.streams.add(handlers.onEvent)
-      handlers.onEvent(status())
+      handlers.onEvent(fake.status(host))
       return { unsubscribe: () => host.streams.delete(handlers.onEvent) }
     }
   )
 }))
+afterEach(() => cleanup())
 
-async function showRow(owner: { kind: 'local' } | { kind: 'environment'; environmentId: string }) {
+async function showRow(owner: RuntimeClientTarget) {
   const view = render(
     <TooltipProvider>
       <AntigravityChatSignInRow owner={owner} label="" description="" disabled={false} />
@@ -59,12 +82,13 @@ async function showRow(owner: { kind: 'local' } | { kind: 'environment'; environ
 it('opens the link once across status answers and shows signed in', async () => {
   const openUrl = vi.fn(async () => undefined)
   Object.assign(window, { api: { shell: { openUrl } } })
-  const view = await showRow({ kind: 'local' })
+  const owner = { kind: 'local' } as const
+  const view = await showRow(owner)
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-  await act(async () => publish({ flowId: 'f', phase: 'waiting', url }))
+  await act(async () => publish(owner, { flowId: 'f', phase: 'waiting', url }))
   await screen.findByText('Finish signing in in your browser.')
-  await act(async () => publish({ flowId: 'f', phase: 'waiting', url }))
-  await act(async () => publish({ flowId: 'f', phase: 'signedIn' }, true))
+  await act(async () => publish(owner, { flowId: 'f', phase: 'waiting', url }))
+  await act(async () => publish(owner, { flowId: 'f', phase: 'signedIn' }, true))
   await screen.findByText('Signed in.')
   expect(screen.getByRole('button', { name: 'Change account' })).toBeTruthy()
   expect(openUrl).toHaveBeenCalledExactlyOnceWith(url)
@@ -73,28 +97,29 @@ it('opens the link once across status answers and shows signed in', async () => 
 
 it('opens nothing for a Start the host answers after the row unmounts', async () => {
   const start = Promise.withResolvers<{ flowId: string }>()
-  host.start = start.promise
+  fake.start = start.promise
   const openUrl = vi.fn(async () => undefined)
   Object.assign(window, { api: { shell: { openUrl } } })
-  const view = await showRow({ kind: 'environment', environmentId: 'unmounted' })
+  const owner = { kind: 'environment', environmentId: 'unmounted' } as const
+  const view = await showRow(owner)
   await userEvent.click(view.getByRole('button', { name: 'Sign in' }))
   view.unmount()
   await act(async () => {
     start.resolve({ flowId: 'late' })
-    publish({ flowId: 'late', phase: 'waiting', url })
+    publish(owner, { flowId: 'late', phase: 'waiting', url })
   })
   expect(openUrl).not.toHaveBeenCalled()
-  host.start = null
+  fake.start = null
 })
 
 it('an idle row shows a sign-in another device starts, and can cancel it', async () => {
-  publish({ flowId: 'done', phase: 'cancelled' })
+  const owner = { kind: 'environment', environmentId: 'idle' } as const
+  publish(owner, { flowId: 'done', phase: 'cancelled' })
   const openUrl = vi.fn(async () => undefined)
   Object.assign(window, { api: { shell: { openUrl } } })
-  const owner = { kind: 'environment', environmentId: 'idle' } as const
   await showRow(owner)
   await screen.findByText('Sign-in cancelled.')
-  await act(async () => publish({ flowId: 'other', phase: 'waiting', url }))
+  await act(async () => publish(owner, { flowId: 'other', phase: 'waiting', url }))
   await screen.findByText('Finish signing in in your browser.')
   await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   expect(callAntigravityChatSignIn).toHaveBeenCalledWith(owner, 'Cancel', { flowId: 'other' })
@@ -104,7 +129,7 @@ it('an idle row shows a sign-in another device starts, and can cancel it', async
 it('sends the address pasted from a browser on another computer to the host', async () => {
   const owner = { kind: 'environment', environmentId: 'paste' } as const
   await showRow(owner)
-  await act(async () => publish({ flowId: 'remote', phase: 'waiting', url }))
+  await act(async () => publish(owner, { flowId: 'remote', phase: 'waiting', url }))
   const continueButton = await screen.findByRole('button', { name: 'Continue' })
   const pasted = 'http://127.0.0.1:51234/?state=s&code=c'
   await userEvent.type(screen.getByRole('textbox'), pasted)
