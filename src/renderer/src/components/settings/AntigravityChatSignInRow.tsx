@@ -1,10 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { useClipboardTextCopyFeedback } from '@/hooks/use-clipboard-text-copy-feedback'
 import {
   antigravityChatSignInRunning as running,
   cancelAntigravityChatSignIn,
+  completeAntigravityChatSignIn,
   observeAntigravityChatSignIn,
   readAntigravityChatSignIn,
   startAntigravityChatSignIn,
@@ -15,6 +16,7 @@ import type { RuntimeClientTarget } from '../../../../shared/runtime-client-targ
 import type { AntigravityChatSignInState } from '../../../../shared/antigravity-account-types'
 import type { ManagedRuntimeInstallObservation } from '@/runtime/use-managed-runtime-install'
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 type Flow = AntigravityChatSignInState
@@ -30,6 +32,8 @@ function chatSignInLine(flow: Flow | null, saved: boolean, openFailed: boolean, 
             'Copy the link and open it in your browser.'
           )
         : translate('accounts.antigravity.chatWaiting', 'Finish signing in in your browser.')
+    case 'verifying':
+      return translate('accounts.antigravity.chatVerifying', 'Finishing sign-in…')
     case 'signedIn':
       return translate('accounts.antigravity.chatSignedIn', 'Signed in.')
     case 'cancelled':
@@ -57,12 +61,6 @@ function signInButtonLabel(flow: Flow | null, saved: boolean, error: string | nu
   return flow?.phase === 'signedIn' || (!flow && saved)
     ? translate('accounts.antigravity.chatChangeAccount', 'Change account')
     : translate('accounts.antigravity.chatSignIn', 'Sign in')
-}
-
-/** Chats sign in on the host itself, never in a WSL distro; a remote host's Google page returns to
- *  that host, so remote sign-in waits for callback forwarding. */
-export function hostOffersAntigravityChatSignIn(owner: RuntimeClientTarget): boolean {
-  return owner.kind === 'local'
 }
 
 const SETTLED_OPERATION_PHASES = new Set(['succeeded', 'failed', 'cancelled'])
@@ -109,6 +107,61 @@ export function useAntigravityChatSignIn(
   return useSyncExternalStore(subscribeAntigravityChatSignIns, read, read)
 }
 
+/** Google's last page points at the host, which a browser on another computer can't reach, so its
+ *  address is pasted here and the host passes it on. */
+function PastedAddressForm(props: {
+  pending: boolean
+  send: (callbackUrl: string, refused: (message: string) => void) => void
+}): React.JSX.Element {
+  const [pasted, setPasted] = useState('')
+  // The host's refusal of this address; the form leaves once the host takes one.
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const helpId = useId()
+  const callbackUrl = pasted.trim()
+  return (
+    <form
+      className="space-y-1 pt-1"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (callbackUrl) {
+          props.send(callbackUrl, setRefusal)
+        }
+      }}
+    >
+      <p id={helpId} className="text-xs text-muted-foreground">
+        {translate(
+          'accounts.antigravity.chatPasteHelp',
+          "If the last page after signing in doesn't load, copy its full address from your browser and paste it here."
+        )}
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          type="url"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={16_384}
+          aria-labelledby={helpId}
+          aria-invalid={refusal !== null}
+          value={pasted}
+          disabled={props.pending}
+          onChange={(event) => {
+            setPasted(event.target.value)
+            setRefusal(null)
+          }}
+        />
+        <Button type="submit" size="sm" variant="outline" disabled={props.pending || !callbackUrl}>
+          {translate('accounts.antigravity.chatContinue', 'Continue')}
+        </Button>
+      </div>
+      {refusal !== null && (
+        <p role="alert" className="text-xs text-destructive">
+          {refusal}
+        </p>
+      )}
+    </form>
+  )
+}
+
 /** This execution host's sign-in for Antigravity chats, run by the host's own server. Every row
  *  for a host shows the same sign-in, a running one included. */
 export function AntigravityChatSignInRow(props: {
@@ -119,7 +172,7 @@ export function AntigravityChatSignInRow(props: {
 }): React.JSX.Element {
   const { owner, label } = props
   const { status, flow, saved, openFailed, ...view } = useAntigravityChatSignIn(owner)
-  // One start or cancel at a time, so a double click asks the host once.
+  // One start, cancel or paste at a time, so a double click asks the host once.
   const [pending, setPending] = useState(false)
   const act = (request: () => Promise<void>): void => {
     setPending(true)
@@ -142,7 +195,7 @@ export function AntigravityChatSignInRow(props: {
     (copy.status === 'failed' ? copyFailed : null)
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 flex-1 space-y-1">
         <p className="text-xs font-medium">
           {translate('accounts.antigravity.chatTitle', 'Antigravity chats')}
         </p>
@@ -151,6 +204,19 @@ export function AntigravityChatSignInRow(props: {
         <p role="status" className="min-h-4 text-xs text-muted-foreground">
           {status === 'known' ? chatSignInLine(flow, saved, openFailed, label) : null}
         </p>
+        {flow?.phase === 'waiting' && flow.url && (
+          <PastedAddressForm
+            pending={pending}
+            send={(callbackUrl, refused) =>
+              act(async () => {
+                const refusal = await completeAntigravityChatSignIn(owner, callbackUrl)
+                if (refusal !== null) {
+                  refused(refusal || failed)
+                }
+              })
+            }
+          />
+        )}
         {alert && (
           <p role="alert" className="text-xs text-destructive">
             {alert}

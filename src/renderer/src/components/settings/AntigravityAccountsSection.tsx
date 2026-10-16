@@ -20,7 +20,6 @@ import { antigravityChatSignInRunning } from '@/runtime/antigravity-chat-sign-in
 import {
   AntigravityChatSignInRow,
   antigravityChatSignInBlocked,
-  hostOffersAntigravityChatSignIn,
   useAntigravityChatSignIn
 } from './AntigravityChatSignInRow'
 
@@ -56,7 +55,8 @@ export function AntigravityAccountsSection({
   const nativeChat = useAppStore((s) => s.settings?.experimentalNativeChat === true)
   const chats = nativeChat && runtime !== 'wsl'
   const chatRuntime = useManagedRuntimeInstall(owner, 'antigravity', chats)
-  const chatSignIn = chats && chatRuntime.kind === 'active' && hostOffersAntigravityChatSignIn(owner)
+  // A remote host's sign-in finishes from the address pasted back into its row.
+  const chatSignIn = chats && chatRuntime.kind === 'active'
   const signIn = useAntigravityChatSignIn(chatSignIn ? owner : null)
 
   useEffect(() => {

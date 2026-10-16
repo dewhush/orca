@@ -100,3 +100,17 @@ it('an idle row shows a sign-in another device starts, and can cancel it', async
   expect(callAntigravityChatSignIn).toHaveBeenCalledWith(owner, 'Cancel', { flowId: 'other' })
   expect(openUrl).not.toHaveBeenCalled()
 })
+
+it('sends the address pasted from a browser on another computer to the host', async () => {
+  const owner = { kind: 'environment', environmentId: 'paste' } as const
+  await showRow(owner)
+  await act(async () => publish({ flowId: 'remote', phase: 'waiting', url }))
+  const continueButton = await screen.findByRole('button', { name: 'Continue' })
+  const pasted = 'http://127.0.0.1:51234/?state=s&code=c'
+  await userEvent.type(screen.getByRole('textbox'), pasted)
+  await userEvent.click(continueButton)
+  expect(callAntigravityChatSignIn).toHaveBeenCalledWith(owner, 'Complete', {
+    flowId: 'remote',
+    callbackUrl: pasted
+  })
+})

@@ -43,8 +43,8 @@ async function assertChatSignInHost(owner: RuntimeClientTarget): Promise<void> {
 
 export async function callAntigravityChatSignIn<TResult>(
   owner: RuntimeClientTarget,
-  action: 'Start' | 'Cancel',
-  params?: { flowId: string }
+  action: 'Start' | 'Cancel' | 'Complete',
+  params?: { flowId: string; callbackUrl?: string }
 ): Promise<TResult> {
   await assertChatSignInHost(owner)
   return callRuntimeRpc(owner, `accounts.antigravityChatSignIn${action}`, params, {

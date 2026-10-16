@@ -58,7 +58,8 @@ const listeners = new Set<() => void>()
 
 export const antigravityChatSignInRunning = (
   flow: AntigravityChatSignInState | null
-): flow is AntigravityChatSignInState => flow?.phase === 'starting' || flow?.phase === 'waiting'
+): flow is AntigravityChatSignInState =>
+  flow?.phase === 'starting' || flow?.phase === 'waiting' || flow?.phase === 'verifying'
 
 const flowOf = (owner: RuntimeClientTarget): AntigravityChatSignInState | null => {
   const snapshot = signIns.read(owner)
@@ -124,6 +125,22 @@ export async function cancelAntigravityChatSignIn(owner: RuntimeClientTarget): P
       (cause: unknown) => note(localFor(owner), { error: message(cause) })
     )
   }
+}
+
+/** Sends the address the browser ended on to the host, for a browser on another computer.
+ *  Resolves to the host's refusal, empty when it gave no reason, or null once it took it. */
+export async function completeAntigravityChatSignIn(
+  owner: RuntimeClientTarget,
+  callbackUrl: string
+): Promise<string | null> {
+  const flow = flowOf(owner)
+  if (!flow) {
+    return ''
+  }
+  return callAntigravityChatSignIn(owner, 'Complete', { flowId: flow.flowId, callbackUrl }).then(
+    () => null,
+    message
+  )
 }
 
 /** Follows the host's sign-in while a row shows it. Returns the release. */
