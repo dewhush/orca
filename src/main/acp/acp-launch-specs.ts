@@ -95,10 +95,9 @@ export type AcpLaunchSpec = {
   /** A pinned copy Orca installs under its data folder when the person asks, searched last; a
    *  start never installs it. A spec with one names no `supportsVersion`. */
   managedRuntime?: ManagedRuntime
-  /** The session config option through which the agent enforces a chat's permission mode itself,
-   *  and its value per mode; Orca then answers none of its permission requests for the person. */
+  /** The agent's `mode` config option value per chat permission mode, through which it enforces
+   *  the mode itself; Orca then answers none of its permission requests for the person. */
   permissionModeConfig?: {
-    configId: string
     values: { ask: string } & Partial<Record<AgentChatPermissionMode, string>>
   }
   /** Images go to the agent when it also advertises them; off sends text prompts only. */

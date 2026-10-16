@@ -200,6 +200,11 @@ export class AcpStructuredOptions {
     }
   }
 
+  /** The session's mode is its `mode`-category select, whatever the agent names it. */
+  modeConfigId(): string {
+    return this.select('mode')?.id ?? 'mode'
+  }
+
   private select(category: string): SelectOption | null {
     const option = this.configOptions.find(
       (entry) => entry.category === category || (category === 'model' && entry.id === 'model')

@@ -263,8 +263,9 @@ export async function acquireAcpStructuredSession(input: {
       // Unlike a saved pick, a refusal fails the start: the session would run another posture.
       // A start the host names no mode for asks, never more access than the chat chose.
       const requested = mode.values[acquire.permissionMode ?? 'ask'] ?? mode.values.ask
-      const { configOptions } = await connection.setConfigOption(mode.configId, requested)
-      if (configOptions.find((option) => option.id === mode.configId)?.currentValue !== requested) {
+      const configId = options.modeConfigId()
+      const { configOptions } = await connection.setConfigOption(configId, requested)
+      if (configOptions.find((option) => option.id === configId)?.currentValue !== requested) {
         throw new Error('Permission mode could not be confirmed')
       }
       options.adoptConfigOptions(configOptions)
