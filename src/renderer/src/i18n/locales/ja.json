@@ -19158,12 +19158,12 @@
       "installed": "インストール済みです。",
       "notInstalled": "インストールされていません。",
       "progress": "{{agent}} のダウンロード",
-      "readFailed": "このホストの {{agent}} を確認できませんでした。",
+      "readFailed": "このホストの {{agent}} を確認できませんでした。再試行しています。",
       "reinstall": "{{agent}} を再インストール",
       "retry": "インストールを再試行",
       "unavailable": "{{agent}} はこのホストでは利用できません。",
       "update": "{{agent}} を更新",
-      "verifying": "ダウンロードを確認しています。"
+      "verifying": "ダウンロードしたランタイムを確認しています。"
     }
   },
   "dashboardPopout": {

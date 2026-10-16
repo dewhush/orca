@@ -19341,12 +19341,12 @@
       "installed": "Installed.",
       "notInstalled": "Not installed.",
       "progress": "{{agent}} download",
-      "readFailed": "Could not check {{agent}} on this host.",
+      "readFailed": "Could not check {{agent}} on this host. Retrying.",
       "reinstall": "Reinstall {{agent}}",
       "retry": "Retry installation",
       "unavailable": "{{agent}} is not available on this host.",
       "update": "Update {{agent}}",
-      "verifying": "Checking the download."
+      "verifying": "Checking the downloaded runtime."
     }
   },
   "dashboardPopout": {

@@ -33,7 +33,7 @@ function runningView(
     : phase === 'extracting'
       ? translate('components.managed-runtime.extracting', 'Extracting {{agent}}.', { agent })
       : phase === 'verifying'
-        ? translate('components.managed-runtime.verifying', 'Checking the download.')
+        ? translate('components.managed-runtime.verifying', 'Checking the downloaded runtime.')
         : total === null
           ? translate('components.managed-runtime.downloading', 'Downloading {{done}} MB.', {
               done: megabytes(done)
@@ -141,7 +141,7 @@ export function managedRuntimeInstallView(
         snapshot.kind === 'readFailed'
           ? translate(
               'components.managed-runtime.readFailed',
-              'Could not check {{agent}} on this host.',
+              'Could not check {{agent}} on this host. Retrying.',
               { agent }
             )
           : null,

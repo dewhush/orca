@@ -49,7 +49,7 @@ describe('managedRuntimeInstallView', () => {
       null
     ])
     expect(shown({ operation: op({ phase: 'verifying' }) }, 'settings')).toEqual([
-      'Checking the download.',
+      'Checking the downloaded runtime.',
       'Cancel installation',
       null
     ])
@@ -96,6 +96,6 @@ describe('managedRuntimeInstallView', () => {
   it('never reads a failed status read as not installed', () => {
     const view = managedRuntimeInstallView({ kind: 'readFailed' }, 'Fake', 'chat')
     expect(view.action).toBeNull()
-    expect(view.error).toBe('Could not check Fake on this host.')
+    expect(view.error).toBe('Could not check Fake on this host. Retrying.')
   })
 })

@@ -19154,12 +19154,12 @@
       "installed": "Instalado.",
       "notInstalled": "No instalado.",
       "progress": "Descarga de {{agent}}",
-      "readFailed": "No se pudo comprobar {{agent}} en este host.",
+      "readFailed": "No se pudo comprobar {{agent}} en este host. Reintentando.",
       "reinstall": "Reinstalar {{agent}}",
       "retry": "Reintentar instalación",
       "unavailable": "{{agent}} no está disponible en este host.",
       "update": "Actualizar {{agent}}",
-      "verifying": "Comprobando la descarga."
+      "verifying": "Comprobando el entorno descargado."
     }
   },
   "dashboardPopout": {

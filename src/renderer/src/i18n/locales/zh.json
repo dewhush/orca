@@ -19158,12 +19158,12 @@
       "installed": "已安装。",
       "notInstalled": "未安装。",
       "progress": "{{agent}} 下载",
-      "readFailed": "无法检查此主机上的 {{agent}}。",
+      "readFailed": "无法检查此主机上的 {{agent}}。正在重试。",
       "reinstall": "重新安装 {{agent}}",
       "retry": "重试安装",
       "unavailable": "{{agent}} 在此主机上不可用。",
       "update": "更新 {{agent}}",
-      "verifying": "正在检查下载内容。"
+      "verifying": "正在检查已下载的运行时。"
     }
   },
   "dashboardPopout": {

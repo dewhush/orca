@@ -19262,12 +19262,12 @@
       "installed": "Installé.",
       "notInstalled": "Non installé.",
       "progress": "Téléchargement de {{agent}}",
-      "readFailed": "Impossible de vérifier {{agent}} sur cet hôte.",
+      "readFailed": "Impossible de vérifier {{agent}} sur cet hôte. Nouvel essai en cours.",
       "reinstall": "Réinstaller {{agent}}",
       "retry": "Réessayer l'installation",
       "unavailable": "{{agent}} n'est pas disponible sur cet hôte.",
       "update": "Mettre à jour {{agent}}",
-      "verifying": "Vérification du téléchargement."
+      "verifying": "Vérification de l’environnement téléchargé."
     }
   },
   "dashboardPopout": {
