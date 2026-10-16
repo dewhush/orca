@@ -231,11 +231,17 @@ export function antigravitySignInUrl(
   return valid ? { url: link, redirectUri: one('redirect_uri'), state: one('state') } : null
 }
 
-export function cancelAntigravityChatSignIn(flowId: string): AntigravityChatSignInState | null {
-  if (flow?.id !== flowId) {
+/** Resolves once the flow has unwound and let go of the chats' starts, so a send right after
+ *  Cancel isn't refused as a sign-in change. */
+export async function cancelAntigravityChatSignIn(
+  flowId: string
+): Promise<AntigravityChatSignInState | null> {
+  const current = flow
+  if (current?.id !== flowId) {
     throw new Error('That Antigravity sign-in is no longer running.')
   }
-  publish(flow, { phase: 'cancelled' })
+  publish(current, { phase: 'cancelled' })
+  await current.done
   return signInState.get().value
 }
 
