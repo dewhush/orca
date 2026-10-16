@@ -193,7 +193,7 @@ export function NativeChatStructuredSession(
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
   // An owned prompt keeps its card; otherwise a missing program takes the composer's place.
   const installSlot = useNativeChatInstallSlot(props.target, props.agent, props.isVisible)
-  const composerOpen = composerShown && installSlot.kind === 'none'
+  const composerOpen = composerShown && installSlot.kind !== 'install'
   const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
     if (prompt && (controller.turnId || props.agent === 'pi')) {

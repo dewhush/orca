@@ -103,10 +103,10 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     }
     const draft = structuredAgentSessionDraftScopeKey('session-1')
     updateNativeChatComposerDraft(draft, { text: 'hello' }, 'immediate')
-    // Before the first answer the slot stays quiet: neither the composer nor Install flashes.
+    // Before the first answer the composer stays (its sends held) and Install doesn't flash.
     hostSays(null)
     const { rerender } = render(sessionView())
-    expect(screen.queryByTestId('structured-composer')).toBeNull()
+    expect(screen.getByTestId('structured-composer')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Install Codex' })).toBeNull()
 
     hostSays(notInstalled)
