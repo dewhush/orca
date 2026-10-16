@@ -54,7 +54,7 @@ import { structuredAgentConfiguredArgs } from '../../native-chat/structured-agen
 import { claudeCliFlagSupport } from '../../claude/claude-cli-flag-support'
 import {
   runtimeHiddenHostIds,
-  runtimeHiddenRepoIds,
+  runtimeHiddenRepos,
   runtimeVisibleRepos,
   withoutHiddenHosts
 } from '../runtime-visible-catalog'
@@ -75,10 +75,10 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
       sourceDefaultsSupported,
       visibilitySettings
     )
-    const hiddenRepoIds = runtimeHiddenRepoIds(this.store)
+    const hiddenRepos = runtimeHiddenRepos(this.store)
     const resolvedWorktrees = resolvedWorktreeSnapshot.worktrees.filter(
       (worktree) =>
-        !hiddenRepoIds.has(worktree.repoId) &&
+        !hiddenRepos.hasWorktree(worktree) &&
         this.isRuntimeWorktreeVisible(
           worktree,
           visibilitySourceMatchersByRepoId.get(worktree.repoId),
