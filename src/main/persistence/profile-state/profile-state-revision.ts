@@ -62,6 +62,11 @@ export function raiseProfileStateRevisionFloor(
        SET revision = ? WHERE revision < ? AND presence <> 'document'`
     )
     .run(floorRevision, floorRevision)
+  // Normalized automation-run rows are read back against the meta revision and
+  // fenced the same way; bump them too so a stale row cannot lead the floor.
+  db
+    .prepare(`UPDATE profile_state_automation_runs SET revision = ? WHERE revision < ?`)
+    .run(floorRevision, floorRevision)
   db
     .prepare(`INSERT OR REPLACE INTO profile_state_meta (key, value) VALUES (?, ?)`)
     .run(PROFILE_STATE_META_REVISION, String(floorRevision))

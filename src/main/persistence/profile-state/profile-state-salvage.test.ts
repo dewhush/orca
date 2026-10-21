@@ -145,6 +145,58 @@ describe('salvageValidDocuments', () => {
     expect(result.intactDocuments).toEqual([])
     expect(result.skippedDomains).toEqual(['settings', 'ui'])
   })
+
+  it('drops the normalized automationRuns document from intact salvage', async () => {
+    const { databaseFile } = await fixture()
+    // Seed a DOCUMENT-marker automationRuns row the way importProfileStateJson
+    // does, so the salvage exclusion branch is exercised.
+    const source = openProfileStateDatabase(databaseFile, profileId)
+    try {
+      const sha256 = (payload: string): string =>
+        createHash('sha256').update(payload, 'utf8').digest('hex')
+      const revision = source.db
+        .prepare("SELECT value FROM profile_state_meta WHERE key = 'revision'")
+        .get() as { value: string }
+      source.db
+        .prepare(
+          `INSERT INTO profile_state_documents
+           (domain, payload, domain_version, revision, updated_at, content_hash)
+           VALUES ('automationRuns', 'null', 1, ?, ?, ?)`
+        )
+        .run(Number(revision.value), Date.now(), sha256('null'))
+    } finally {
+      source.db.close()
+    }
+    const result = salvageValidDocuments({ databasePath: databaseFile, profileId })
+    expect(result.droppedProjectionDomains).toEqual(['automationRuns'])
+    expect(result.intactDocuments.map((doc) => doc.domain)).toEqual(['ui'])
+  })
+
+  it('overwrites a baseline domain when salvage carries a newer revision', async () => {
+    const { root, databaseFile, backupId } = await fixture()
+    // The restored baseline has `ui` at revision 1; the quarantined family has
+    // it at revision 2. The ON CONFLICT DO UPDATE branch must replace the
+    // baseline payload with the salvaged one.
+    const maintenance = acquireProfileStateMaintenance(root)
+    let result: ReturnType<typeof rollbackProfileState>
+    try {
+      result = rollbackProfileState(root, selector(backupId), maintenance, profileId)
+    } finally {
+      maintenance.release()
+    }
+    expect(result.revision).toBe(2)
+    expect(payloadOf('ui', databaseFile)).toMatchObject({ laterWork: 'recovered' })
+    // The restored row now carries the salvaged revision, not the baseline 1.
+    const opened = openProfileStateDatabase(databaseFile, profileId)
+    try {
+      const row = opened.db
+        .prepare('SELECT revision FROM profile_state_documents WHERE domain = ?')
+        .get('ui') as { revision: number }
+      expect(row.revision).toBe(2)
+    } finally {
+      opened.db.close()
+    }
+  })
 })
 
 describe('rollbackProfileState with a quarantined salvage source', () => {
